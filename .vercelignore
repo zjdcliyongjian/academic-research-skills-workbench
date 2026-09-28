@@ -1,0 +1,14 @@
+node_modules
+dist
+tmp
+qa-render-trial
+.vercel
+.env.local
+*.tsbuildinfo
+*.log
+测试数据
+data
+tests
+scripts
+phase-*/qa-*
+design-previews

@@ -1,0 +1,58 @@
+{
+  "name": "ai-research-copilot-workbench",
+  "version": "0.4.1",
+  "description": "Evidence-aware open-source AI research workbench with human review gates",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zjdcliyongjian/ai-research-copilot-workbench.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4318",
+    "cloud:server": "node --use-env-proxy --env-file=.env.local cloud/dev-server.mjs",
+    "server": "node server/index.mjs",
+    "cloud:bootstrap-admin": "node scripts/bootstrap-cloud-admin.mjs",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/noto-sans-sc": "5.3.0",
+    "@fontsource/noto-serif-sc": "5.3.0",
+    "@mozilla/readability": "^0.6.0",
+    "@napi-rs/canvas": "^1.0.9",
+    "@paddleocr/api-sdk": "^0.2.3",
+    "@supabase/supabase-js": "^2.116.0",
+    "@tesseract.js-data/chi_sim": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@upstash/qstash": "^2.11.3",
+    "@upstash/redis": "^1.38.4",
+    "@vercel/functions": "^3.9.8",
+    "docx": "9.5.1",
+    "jsdom": "26.1.0",
+    "jszip": "3.10.1",
+    "lucide-react": "0.468.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.5",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "typescript": "5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  }
+}

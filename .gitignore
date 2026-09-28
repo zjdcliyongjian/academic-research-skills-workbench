@@ -1,0 +1,34 @@
+node_modules/
+dist/
+data/
+.vercel/
+.obsidian/
+
+# Local credentials and runtime state
+.env*
+!.env.example
+*.log
+*.pid
+*.db
+*.sqlite*
+*.tsbuildinfo
+
+# Generated previews, test outputs, and large local-only fixtures
+tmp/
+qa-render-trial/
+design-previews/
+测试数据/
+phase-0/evidence/
+phase-0/sandbox-project/
+phase-*/qa-*/
+
+# Share and marketing assets are maintained outside the app source tree
+covers/
+share-html-work/
+
+# Private/internal notes retained locally but excluded from the public snapshot
+试用问题清单.md
+四平台发布文案-v1.md
+科研工作台-四平台发布文案.md
+
+.DS_Store
