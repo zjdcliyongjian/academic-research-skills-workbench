@@ -23,15 +23,15 @@ describe("cloud BYOK encryption", () => {
 });
 
 describe("cloud research skill contract", () => {
-  it("exposes all twelve reviewed skills", () => {
-    expect(CLOUD_SKILLS).toHaveLength(12);
-    expect(getSkill("pre-submission-reviewer").stage).toBe("review");
+  it("exposes all seven ARS workbench capabilities", () => {
+    expect(CLOUD_SKILLS).toHaveLength(7);
+    expect(getSkill("ars-finalize").stage).toBe("review");
   });
 
   it("only promotes verified source facts into the prompt", () => {
     const prompt = buildCloudPrompt({
       project: { name: "测试课题", field: "计算机视觉", paper_type: "technical", language: "zh", goal: "验证方法", stage: "research" },
-      skillName: "deep-research",
+      skillName: "ars-research",
       input: { instructions: "比较两种方法" },
       sources: [
         { status: "content-verified", title: "已核验论文", name: "a.pdf", extracted_text: "真实正文", url: "https://example.com/a" },
@@ -52,10 +52,10 @@ describe("cloud research skill contract", () => {
 
   it("keeps the current user message and prior turns in a bounded follow-up context", () => {
     const input = appendConversationTurn({ instructions: "起草引言" }, { prompt: "起草引言", output: "第一版引言" }, "把研究缺口写具体");
-    expect(currentRunMessage("intro-drafter", input)).toBe("把研究缺口写具体");
+    expect(currentRunMessage("ars-write", input)).toBe("把研究缺口写具体");
     const prompt = buildCloudPrompt({
       project: { name: "测试课题", field: "材料", paper_type: "technical", language: "zh", goal: "起草论文", stage: "writing" },
-      skillName: "intro-drafter", input, sources: [], evidenceClaims: [], versions: [],
+      skillName: "ars-write", input, sources: [], evidenceClaims: [], versions: [],
     });
     expect(prompt.user).toContain("已保存的多轮对话");
     expect(prompt.user).toContain("第一版引言");

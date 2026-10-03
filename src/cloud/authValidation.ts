@@ -2,11 +2,13 @@ export const PASSWORD_RULE_MESSAGE = "密码必须为 8–12 位，并且同时�
 
 export type AuthIdentity =
   | { kind: "admin"; account: "admin"; email: string; displayName: "admin" }
+  | { kind: "username"; account: string; displayName: string }
   | { kind: "email"; account: string; email: string; displayName: string }
   | { kind: "phone"; account: string; phone: string; displayName: string };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const mainlandPhonePattern = /^1[3-9]\d{9}$/;
+const usernamePattern = /^[\p{L}\p{N}][\p{L}\p{N}._-]{2,31}$/u;
 
 export function resolveAuthIdentity(value: string): AuthIdentity | null {
   const raw = value.trim();
@@ -17,6 +19,8 @@ export function resolveAuthIdentity(value: string): AuthIdentity | null {
   const compact = raw.replace(/[\s-]/g, "");
   const localPhone = compact.startsWith("+86") ? compact.slice(3) : compact.startsWith("86") && compact.length === 13 ? compact.slice(2) : compact;
   if (mainlandPhonePattern.test(localPhone)) return { kind: "phone", account: localPhone, phone: `+86${localPhone}`, displayName: localPhone };
+  const normalizedUsername = raw.normalize("NFKC").toLowerCase();
+  if (usernamePattern.test(normalizedUsername)) return { kind: "username", account: normalizedUsername, displayName: normalizedUsername };
   return null;
 }
 

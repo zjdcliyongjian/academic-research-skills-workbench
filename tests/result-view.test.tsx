@@ -17,10 +17,10 @@ describe("research result reading", () => {
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('href="javascript:');
   });
-  it("supplies distinct examples for all twelve tasks", () => {
-    expect(Object.keys(taskExamples)).toHaveLength(12);
-    expect(new Set(Object.values(taskExamples)).size).toBe(12);
-    expect(taskExamples['intro-drafter']).toContain('引言');
-    expect(taskExamples['tech-paper-template']).toContain('目录');
+  it("supplies distinct examples for all seven ARS capabilities", () => {
+    expect(Object.keys(taskExamples)).toHaveLength(7);
+    expect(new Set(Object.values(taskExamples)).size).toBe(7);
+    expect(taskExamples['ars-write']).toContain('outline');
+    expect(taskExamples['ars-integrity']).toContain('Stage 2.5');
   });
 });

@@ -2,9 +2,13 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import path from "node:path";
 import { SKILL_REGISTRY } from "./config.mjs";
 import { store } from "./db.mjs";
 import { appendApprovalEvent, appendRunEvent, saveRunDraft, updateCodexBinding } from "./vault.mjs";
+import { appendRunCompletionReceipts, closeApprovalCheckpoint, openApprovalCheckpoint, openRunReviewCheckpoint, recordLedgerDiagnostic } from "./ars-ledger.mjs";
+import { syncProjectPassport } from "./material-passport.mjs";
 
 const CLIENT_INFO = {
   name: "ai_research_copilot_workbench",
@@ -16,7 +20,7 @@ const THREAD_DEVELOPER_INSTRUCTIONS = [
   "你在 AI 科研工作台中工作。",
   "原始资料目录只读；所有来源必须保留可追溯路径或 URL。",
   "明确区分来源事实、综合判断、冲突、未知项与待核验项。",
-  "任何外部写入、命令执行、联网采集或覆盖正式成果都必须请求人工审批。",
+  "仅用于读取项目、Skill 与本地运行记忆的安全命令可自动执行。任何联网、外部写入、删除、移动、覆盖正式成果或启动其他程序的操作都必须请求人工审批。",
 ].join("\n");
 
 function threadOptions(project) {
@@ -30,7 +34,8 @@ function threadOptions(project) {
 }
 
 function isThreadNotFound(error) {
-  return /thread not found/i.test(error instanceof Error ? error.message : String(error));
+  const message = error instanceof Error ? error.message : String(error);
+  return /thread not found|no rollout found for thread id/i.test(message);
 }
 
 function isRunCancelled(run) {
@@ -51,6 +56,83 @@ function approvalPayload(params = {}) {
     cwd: params.cwd || params.item?.cwd || null,
     raw: params,
   };
+}
+
+const SAFE_READONLY_COMMANDS = [
+  "Get-Content",
+  "Get-ChildItem",
+  "Get-Item",
+  "Get-FileHash",
+  "Test-Path",
+  "Resolve-Path",
+  "Select-String",
+  "Select-Object",
+  "Measure-Object",
+  "Write-Output",
+  "ForEach-Object",
+  "Join-Path",
+];
+
+const UNSAFE_COMMAND_PATTERN = new RegExp([
+  "Set-Content", "Add-Content", "Out-File", "Remove-Item", "Move-Item", "Copy-Item",
+  "New-Item", "Rename-Item", "Clear-Content", "Invoke-WebRequest", "Invoke-RestMethod",
+  "Start-Process", "Invoke-Expression", "Set-Item", "Set-Location", "Export-Csv",
+  "Import-Module", "curl(?:\\.exe)?", "wget(?:\\.exe)?", "git(?:\\.exe)?",
+  "npm(?:\\.cmd)?", "npx(?:\\.cmd)?", "node(?:\\.exe)?", "python(?:\\.exe)?",
+  "pwsh(?:\\.exe)?", "powershell(?:\\.exe)?", "cmd(?:\\.exe)?",
+  "del", "erase", "rd", "rmdir", "ren", "mkdir", "robocopy", "xcopy", "scp", "ssh",
+  "shutdown", "taskkill", "reg", "schtasks", "Get-Credential", "Get-Secret", "Get-Clipboard",
+].map((item) => `\\b${item}\\b`).join("|"), "i");
+
+function isInside(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function commandActions(params = {}) {
+  const raw = params.raw || params;
+  const actions = raw.commandActions || raw.item?.commandActions || params.commandActions || params.item?.commandActions;
+  if (!Array.isArray(actions) || actions.length === 0) return [];
+  return actions.map((action) => typeof action === "string" ? action : action?.command).filter(Boolean);
+}
+
+function absoluteCommandPaths(command) {
+  const quoted = [...command.matchAll(/["']([A-Za-z]:\\[^"']+)["']/g)].map((match) => match[1]);
+  const unquoted = [...command.matchAll(/(?:^|[\s(,;])([A-Za-z]:\\[^\s,;|)]+)/g)].map((match) => match[1]);
+  return [...new Set([...quoted, ...unquoted].map((item) => item.replace(/[),]+$/, "")))];
+}
+
+export function isSafeReadOnlyApprovalRequest(message, project, { homeDirectory = homedir() } = {}) {
+  if (message?.method !== "item/commandExecution/requestApproval" || !project?.projectPath) return false;
+  const params = message.params || {};
+  const actions = commandActions(params);
+  if (actions.length === 0) return false;
+
+  const cwd = params.cwd || params.item?.cwd || project.projectPath;
+  if (!isInside(project.projectPath, cwd)) return false;
+  const allowedRoots = [
+    project.projectPath,
+    path.join(homeDirectory, ".codex", "skills"),
+    path.join(homeDirectory, ".codex", "memories"),
+    path.join(homeDirectory, ".agents", "skills"),
+  ];
+
+  return actions.every((command) => {
+    if (typeof command !== "string" || command.length > 24_000) return false;
+    if (/\.\.|(?:^|\s)[&>]|>>|\|\||\.exe\b|\.cmd\b|\.bat\b|\.ps1\b/i.test(command)) return false;
+    if (UNSAFE_COMMAND_PATTERN.test(command)) return false;
+    const invokedCommands = [...command.matchAll(/(?:^|[;|{}]\s*|\(\s*)([A-Za-z]+-[A-Za-z][A-Za-z0-9]*)\b/g)].map((match) => match[1]);
+    if (invokedCommands.some((name) => !SAFE_READONLY_COMMANDS.some((safe) => safe.toLowerCase() === name.toLowerCase()))) return false;
+    return absoluteCommandPaths(command).every((candidate) => allowedRoots.some((root) => isInside(root, candidate)));
+  });
+}
+
+async function bestEffortLedger(project, operation, action) {
+  try { return await action(); }
+  catch (error) {
+    await recordLedgerDiagnostic(project, operation, error).catch(() => {});
+    return null;
+  }
 }
 
 export class CodexBridge extends EventEmitter {
@@ -168,6 +250,12 @@ export class CodexBridge extends EventEmitter {
       this.send({ id: message.id, result: { decision: "decline" } });
       return;
     }
+    if (isSafeReadOnlyApprovalRequest(message, project)) {
+      this.send({ id: message.id, result: { decision: "accept" } });
+      this.store.updateRun(runId, { status: "running" });
+      this.emitRun(runId, { type: "readonly_auto_approved", run: this.store.getRun(runId) });
+      return;
+    }
     const approvalId = randomUUID();
     const payload = approvalPayload(message.params);
     const approval = this.store.createApproval({
@@ -182,6 +270,10 @@ export class CodexBridge extends EventEmitter {
     this.store.updateRun(runId, { status: "waiting_approval" });
     this.pendingApprovals.set(approvalId, { rpcId: message.id, runId });
     await appendApprovalEvent(project, { type: "requested", ...approval, payload });
+    await bestEffortLedger(project, "approval_checkpoint_opened", async () => {
+      await syncProjectPassport(this.store, project.id);
+      return openApprovalCheckpoint(project, approval);
+    });
     this.emitRun(runId, { type: "approval", approval, run: this.store.getRun(runId) });
   }
 
@@ -222,6 +314,12 @@ export class CodexBridge extends EventEmitter {
       const artifactPath = await saveRunDraft(project, updated);
       const saved = this.store.updateRun(runId, { artifactPath });
       await appendRunEvent(project, { type: `run.${status}`, run: saved });
+      await bestEffortLedger(project, "run_completion_receipt", async () => {
+        await syncProjectPassport(this.store, project.id);
+        await appendRunCompletionReceipts(project, saved);
+        if (status === "completed") await openRunReviewCheckpoint(project, saved);
+        await syncProjectPassport(this.store, project.id);
+      });
       this.activeByThread.delete(params.threadId);
       this.emitRun(runId, { type: status, run: saved });
     }
@@ -279,8 +377,10 @@ export class CodexBridge extends EventEmitter {
 
   async startSkill({ runId, project, skillName, prompt }) {
     await this.start();
-    const skill = this.skillMap.get(skillName);
-    if (!skill?.enabled || !skill?.path) throw new Error(`Skill 未发现或未启用：${skillName}`);
+    const entry = SKILL_REGISTRY.find((item) => item.name === skillName);
+    const runtimeSkillName = entry?.runtimeSkill || skillName;
+    const skill = this.skillMap.get(runtimeSkillName);
+    if (!skill?.enabled || !skill?.path) throw new Error(`Skill 未发现或未启用：${runtimeSkillName}`);
     if (isRunCancelled(this.store.getRun(runId))) return { cancelled: true, threadId: project.threadId, turnId: null };
     let resolved = await this.ensureThread(project, runId);
     let threadId = resolved.threadId;
@@ -334,6 +434,10 @@ export class CodexBridge extends EventEmitter {
     const run = this.store.updateRun(pending.runId, { status: "running" });
     const project = this.store.getProject(run.projectId);
     await appendApprovalEvent(project, { type: "resolved", approval, runId: run.id });
+    await bestEffortLedger(project, "approval_checkpoint_closed", async () => {
+      await closeApprovalCheckpoint(project, approval, decision);
+      await syncProjectPassport(this.store, project.id);
+    });
     this.emitRun(run.id, { type: "approval_resolved", approval, run });
     return { approval, run };
   }
@@ -371,6 +475,11 @@ export class CodexBridge extends EventEmitter {
       const artifactPath = await saveRunDraft(project, cancelled);
       const saved = this.store.updateRun(item.id, { artifactPath });
       await appendRunEvent(project, { type: "run.cancelled", run: saved });
+      await bestEffortLedger(project, "run_cancelled_receipt", async () => {
+        await syncProjectPassport(this.store, project.id);
+        await appendRunCompletionReceipts(project, saved);
+        await syncProjectPassport(this.store, project.id);
+      });
       this.emitRun(item.id, { type: "cancelled", run: saved });
       if (item.id === runId) requestedRun = saved;
     }
@@ -380,7 +489,7 @@ export class CodexBridge extends EventEmitter {
 
   health() {
     const items = SKILL_REGISTRY.map((entry) => {
-      const skill = this.skillMap.get(entry.name);
+      const skill = this.skillMap.get(entry.runtimeSkill || entry.name);
       return { ...entry, found: Boolean(skill), enabled: Boolean(skill?.enabled), path: skill?.path || null };
     });
     return {

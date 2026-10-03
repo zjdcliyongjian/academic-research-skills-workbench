@@ -170,7 +170,161 @@ export interface ProjectDetail {
   runs: RunRecord[];
   approvals: ApprovalRequest[];
   versions: StageVersion[];
+  passport?: MaterialPassport;
+  schema9Import?: Schema9ImportReport | null;
+  revisionWorkspace?: RevisionWorkspace;
+  verification?: VerificationStatus;
   readiness: ProjectReadiness;
+}
+
+export interface VerificationStatus {
+  pdfPreflights: Array<{
+    sourceId: string;
+    sourceName: string;
+    verdict: "PASS" | "FAIL" | "UNAVAILABLE";
+    reason: string | null;
+    checkedAt: string;
+    contentSha256: string | null;
+    sidecarPath: string;
+    report: Record<string, unknown>;
+  }>;
+  cache: {
+    status: "ready" | "empty";
+    path: string;
+    rows: number;
+    citations: number;
+    oldest: string | null;
+    newest: string | null;
+    staleAdvisoryDays: number;
+    ttlDays: number;
+  };
+  latestProgrammatic: null | {
+    status: "completed" | "failed" | "invalid";
+    diagnostic_only?: true;
+    generated_at?: string;
+    outcome_count?: number;
+    stderr?: string;
+    boundary?: string;
+    errors?: string[];
+  };
+  authorizationText: string;
+}
+
+export interface Schema9ImportReport {
+  contract: "ars-workbench-schema9-import-report/1.0";
+  imported_at?: string;
+  file_name?: string;
+  imported_relative_path?: string;
+  content_sha256?: string;
+  status: "invalid" | "core_compatible" | "validated_subset";
+  scope?: string;
+  errors: string[];
+  warnings: string[];
+  unvalidated_extensions?: string[];
+  checks?: Record<string, { status: "passed" | "failed" | "unavailable" | "not_applicable"; code: number | null; stdout: string; stderr: string }>;
+}
+
+export interface RevisionTarget {
+  block_id: string;
+  allowed_operations: Array<"replace_block" | "insert_after" | "delete_block">;
+}
+
+export interface RevisionWorkspace {
+  roadmap: null | {
+    schemaVersion: "revision-roadmap/1.0";
+    revisionRound: number;
+    baseDraftSha256: string;
+    blockManifestSha256: string;
+    totalItems: number;
+    editorialDecision: string;
+    importedAt: string | null;
+    contentSha256: string;
+    items: Array<{
+      id: string;
+      description: string;
+      reviewer: string;
+      obligationClass: "must_fix" | "should_fix" | "consider";
+      targetSection: string;
+      suggestedAction: string;
+      verificationCriteria: string;
+      proposedTargets: RevisionTarget[];
+    }>;
+  };
+  decisions: Array<{
+    itemId: string;
+    authorTriage: "will_address" | "wont_address" | "not_on_point";
+    authorReason: string | null;
+    authorizedTargets: RevisionTarget[];
+    authorEventId: string;
+    recordedAt: string;
+  }>;
+  complete: boolean;
+  exportReady: boolean;
+  exportedRelativePath?: string | null;
+  boundary: string;
+}
+
+export interface MaterialPassport {
+  schema_version: "ars-workbench-material-passport/1.0";
+  projection_scope: "WORKBENCH_PROJECTION";
+  generated_at: string;
+  projection_sha256: string;
+  counts: {
+    sources: number;
+    content_verified_sources: number;
+    claims: number;
+    verified_claims: number;
+    unresolved_claims: number;
+    runs: number;
+    active_versions: number;
+    needs_review_versions: number;
+    open_checkpoints: number;
+    pending_tool_approvals: number;
+  };
+  literature_corpus_projection: Array<{
+    source_id: string;
+    name: string;
+    status: string;
+    locator: string | null;
+    sha256: string | null;
+    human_read_status: "not_recorded";
+  }>;
+  claim_registry_projection: Array<{
+    claim_id: string;
+    source_id: string | null;
+    claim_type: EvidenceClaim["claimType"];
+    claim_text: string;
+    locator: string | null;
+    verification_status: EvidenceClaim["verificationStatus"];
+  }>;
+  version_registry: Array<{
+    version_id: string;
+    stage: string;
+    version_number: number;
+    path: string;
+    content_sha256: string | null;
+    status: string;
+  }>;
+  author_checkpoints: Array<{
+    id: string;
+    run_id: string;
+    stage: string;
+    status: "open" | "closed";
+    decision: string | null;
+  }>;
+  run_ledger: {
+    status: string;
+    ledger_path: string;
+    entries: number;
+    backed: number;
+    awaiting_answer: Array<{ checkpoint_id: string; stage: string; checkpoint_type: string; question: string }>;
+    cannot_confirm: unknown[];
+    not_run: unknown[];
+    missing: unknown[];
+    counters: Record<string, Record<string, number>>;
+    diagnostic?: string | null;
+  };
+  boundaries: string[];
 }
 
 export interface ReadinessStage {

@@ -26,11 +26,23 @@ describe("login blogger contact", () => {
     expect(html).toContain("关闭联系博主");
     for (const card of contactCards) expect(html).toContain(`放大${card.label}图片`);
   });
-  it("is exposed on both the login page and signed-in sidebar", () => {
+  it("is available from both the login page and the signed-in sidebar", () => {
     const gate = readFileSync(new URL("../src/cloud/CloudGate.tsx", import.meta.url), "utf8");
     const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-    expect(gate).toContain("<ContactBlogger/>");
+    expect(gate).toContain("{contactVisible && <ContactBlogger/>}");
     expect(app).toContain('{ id: "contact", label: "联系博主"');
     expect(app).toContain('<ContactBlogger key={item.id} variant="sidebar"');
+    expect(app).toContain('item.id !== "contact" || contactVisible');
+    expect(app).toContain('role="switch" aria-checked={contactVisible}');
+  });
+  it("uses a public read endpoint and an admin-only persisted write endpoint", () => {
+    const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
+    const handler = readFileSync(new URL("../cloud/handler.mjs", import.meta.url), "utf8");
+    expect(api).toContain('publicSettings: () => request<{ contactBloggerEnabled: boolean }>("/api/public/settings")');
+    expect(api).toContain('adminSetContactBloggerEnabled: (enabled: boolean)');
+    expect(handler.indexOf('path === "/public/settings"')).toBeLessThan(handler.indexOf("const user = await authenticate(req)"));
+    expect(handler).toContain('path === "/admin/settings/contact-blogger"');
+    expect(handler).toContain('assertAdmin(user)');
+    expect(handler).toContain('contact_blogger_enabled: input.enabled');
   });
 });

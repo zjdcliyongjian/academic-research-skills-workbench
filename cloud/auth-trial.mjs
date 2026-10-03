@@ -14,7 +14,9 @@ export function normalizeTrialAccount(value) {
   const compact = raw.replace(/[\s-]/g, "");
   const phone = compact.startsWith("+86") ? compact.slice(3) : compact.startsWith("86") && compact.length === 13 ? compact.slice(2) : compact;
   if (/^1[3-9]\d{9}$/.test(phone)) return phone;
-  throw Object.assign(new Error("请输入有效的中国大陆手机号或邮箱地址"), { statusCode: 400 });
+  const username = raw.normalize("NFKC").toLowerCase();
+  if (/^[\p{L}\p{N}][\p{L}\p{N}._-]{2,31}$/u.test(username)) return username;
+  throw Object.assign(new Error("请输入 3–32 位用户名，可使用中英文、数字、点、下划线或短横线"), { statusCode: 400 });
 }
 
 export function validateTrialPassword(value) {

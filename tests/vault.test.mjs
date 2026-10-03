@@ -27,16 +27,18 @@ describe("科研 Vault 边界", () => {
 });
 
 describe("科研 Skill 注册表", () => {
-  it("12 个 Skill 均提供完整、唯一的界面说明", () => {
-    expect(SKILL_REGISTRY).toHaveLength(12);
-    expect(new Set(SKILL_REGISTRY.map((skill) => skill.name)).size).toBe(12);
+  it("7 个 ARS 能力均提供完整、唯一的界面说明", () => {
+    expect(SKILL_REGISTRY).toHaveLength(7);
+    expect(new Set(SKILL_REGISTRY.map((skill) => skill.name)).size).toBe(7);
     for (const skill of SKILL_REGISTRY) {
+      expect(skill.runtimeSkill).toBe("academic-research-suite");
+      expect(skill.route).toBeTruthy();
       expect(skill.label).toBeTruthy();
       expect(skill.description).toBeTruthy();
       expect(skill.input).toBeTruthy();
       expect(skill.output).toBeTruthy();
       expect(skill.gate).toBeTruthy();
-      expect(["阶段 1", "阶段 2", "阶段 3"]).toContain(skill.deliveryStage);
+      expect(["阶段 0", "阶段 1", "阶段 2", "阶段 2.5", "阶段 3", "阶段 4", "阶段 4.5"]).toContain(skill.deliveryStage);
     }
   });
 });

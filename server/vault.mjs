@@ -91,6 +91,9 @@ const PROJECT_DIRS = [
   "09-review/rebuttal",
   "09-review/drafts",
   "09-review/versions",
+  "10-passport",
+  "10-passport/checkpoints",
+  "10-passport/ledgers",
   "10-feedback",
   "11-exports/markdown",
   "11-exports/word",
@@ -230,6 +233,10 @@ export async function appendVersionEvent(project, event) {
 export async function saveRunDraft(project, run) {
   await ensureStage15ProjectLayout(project);
   const stage = ({
+    "ars-scope": "brief", "ars-research": "idea", "ars-write": "research",
+    "ars-integrity": "blueprint", "ars-review": "writing", "ars-revise": "production",
+    "ars-finalize": "review",
+    // Legacy skill names remain readable for projects created by the former workbench.
     "vibe-research-workflow": "brief", "idea-evaluator": "idea", "deep-research": "research",
     "tech-paper-template": "blueprint", "benchmark-paper-template": "blueprint",
     "intro-drafter": "writing", "paper-writer": "writing", "paper-polish": "production",

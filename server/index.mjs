@@ -18,10 +18,24 @@ import { downloadSource, previewSource, processSource, quoteHash } from "./sourc
 import { buildProjectReadiness } from "./trial-readiness.mjs";
 import { exportDeliveryPackage } from "./delivery-package.mjs";
 import { clearLocalResearchData } from "./data-management.mjs";
+import { syncProjectPassport } from "./material-passport.mjs";
+import { appendRunCompletionReceipts, closeRunReviewCheckpoint, ensureInitialInstructions, recordLedgerDiagnostic } from "./ars-ledger.mjs";
+import { importSchema9Passport, readImportedSchema9Passport, readLatestSchema9Report } from "./ars-interoperability.mjs";
+import { finalizeRevisionInput, importRevisionRoadmap, readRevisionInput, readRevisionWorkspace, saveRevisionDecision } from "./revision-adjudication.mjs";
+import { readVerificationStatus, runPdfPreflight, runProgrammaticCitationVerification } from "./research-verification.mjs";
+import { clearLocalSessionCookie, localSession, loginLocalAccount, logoutLocalSession, registerLocalAccount, requireLocalSession, setLocalSessionCookie } from "./local-auth.mjs";
 
 const execFileAsync = promisify(execFile);
-const VERSION = "0.4.1-local";
+const VERSION = "0.1.0-local";
 const contentTypes = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" };
+
+async function bestEffortLedger(project, operation, action) {
+  try { return await action(); }
+  catch (error) {
+    await recordLedgerDiagnostic(project, operation, error).catch(() => {});
+    return null;
+  }
+}
 
 async function jsonBody(req, max = 1024 * 1024) {
   const chunks = [];
@@ -106,9 +120,15 @@ async function startLinkedRun(project, sourceRun, executionPrompt, userMessage) 
     startedAt: new Date().toISOString(),
   });
   await appendRunEvent(workingProject, { type: "run.queued", run });
+  await syncProjectPassport(store, workingProject.id);
+  await bestEffortLedger(workingProject, "initial_instructions", () => ensureInitialInstructions(workingProject, userMessage));
   codex.startSkill({ runId: run.id, project: workingProject, skillName: run.skillName, prompt: executionPrompt }).catch(async (error) => {
     const failed = store.updateRun(run.id, { status: "failed", error: error.message, completedAt: new Date().toISOString() });
     await appendRunEvent(workingProject, { type: "run.failed", run: failed });
+    await bestEffortLedger(workingProject, "run_failed_receipt", async () => {
+      await appendRunCompletionReceipts(workingProject, failed);
+      await syncProjectPassport(store, workingProject.id);
+    });
     codex.emitRun(run.id, { type: "failed", run: failed });
   });
   return run;
@@ -143,6 +163,8 @@ async function reviewCompletedRun(run, decision, note = "") {
     await appendStageReview(project, stage, event);
     await appendVersionEvent(project, { type: "version.activated", version: result.version, impactedStages: result.impactedStages });
     await appendRunEvent(project, event);
+    await bestEffortLedger(project, "checkpoint_closed", () => closeRunReviewCheckpoint(project, run, decision, decision));
+    await syncProjectPassport(store, project.id);
     return { run: store.getRun(run.id), version: result.version, project: result.project, impactedStages: result.impactedStages };
   }
 
@@ -151,6 +173,9 @@ async function reviewCompletedRun(run, decision, note = "") {
   const event = { type: eventType, decision, note: note.trim(), reviewedAt, run: reviewed };
   await appendStageReview(project, stage, event);
   await appendRunEvent(project, event);
+  const exactWords = note.trim() ? `${decision}\n${note.trim()}` : decision;
+  await bestEffortLedger(project, "checkpoint_closed", () => closeRunReviewCheckpoint(project, run, decision, exactWords));
+  await syncProjectPassport(store, project.id);
   if (decision === "request_revision") {
     const executionPrompt = `用户针对上一版草稿提出以下修改要求：\n${note.trim()}\n\n上一版草稿：\n${run.output || "[上一版无完整输出]"}\n\n请保留有证据支持的内容，逐项回应修改要求，并输出一个完整的新版本。`;
     const nextRun = await startLinkedRun(project, run, executionPrompt, note.trim());
@@ -235,6 +260,7 @@ async function routeApi(req, res, url) {
       project = store.updateProjectThread(project.id, threadId);
       await updateCodexBinding(project, threadId);
     } catch (error) { codexWarning = error.message; }
+    await syncProjectPassport(store, project.id);
     return sendJson(res, 201, { project, codexWarning });
   }
   if (parts[0] === "api" && parts[1] === "projects" && parts[2]) {
@@ -245,7 +271,12 @@ async function routeApi(req, res, url) {
       const evidenceClaims = store.listEvidenceClaims(project.id);
       const runs = store.listRuns(project.id);
       const versions = store.listStageVersions(project.id);
-      return sendJson(res, 200, { project, sources, evidenceClaims, runs, approvals: store.listPendingApprovals(project.id), versions, readiness: buildProjectReadiness(project, sources, evidenceClaims, runs, versions) });
+      const approvals = store.listPendingApprovals(project.id);
+      const { passport } = await syncProjectPassport(store, project.id);
+      const schema9Import = await readLatestSchema9Report(project);
+      const revisionWorkspace = await readRevisionWorkspace(project);
+      const verification = await readVerificationStatus(project);
+      return sendJson(res, 200, { project, sources, evidenceClaims, runs, approvals, versions, passport, schema9Import, revisionWorkspace, verification, readiness: buildProjectReadiness(project, sources, evidenceClaims, runs, versions) });
     }
     if (req.method === "PATCH" && parts.length === 3) {
       const input = await jsonBody(req);
@@ -368,6 +399,7 @@ async function routeApi(req, res, url) {
       const target = path.join(project.projectPath, "02-sources", "evidence-cards", "evidence.jsonl");
       await mkdir(path.dirname(target), { recursive: true });
       await appendFile(target, `${JSON.stringify(claim)}\n`, "utf8");
+      await syncProjectPassport(store, project.id);
       return sendJson(res, 201, { claim });
     }
     if (req.method === "POST" && parts[3] === "runs" && parts[4]) {
@@ -385,12 +417,56 @@ async function routeApi(req, res, url) {
       const executionPrompt = buildPrompt(workingProject, skillName, input);
       const run = store.createRun({ id: randomUUID(), projectId: project.id, skillName, threadId: workingProject.threadId, turnId: null, status: "queued", prompt: userMessageForInput(skillName, input), output: "", reviewStatus: "pending", startedAt: new Date().toISOString() });
       await appendRunEvent(workingProject, { type: "run.queued", run });
+      await syncProjectPassport(store, workingProject.id);
+      await bestEffortLedger(workingProject, "initial_instructions", () => ensureInitialInstructions(workingProject, run.prompt));
       codex.startSkill({ runId: run.id, project: workingProject, skillName, prompt: executionPrompt }).catch(async (error) => {
         const failed = store.updateRun(run.id, { status: "failed", error: error.message, completedAt: new Date().toISOString() });
         await appendRunEvent(workingProject, { type: "failed", run: failed });
+        await bestEffortLedger(workingProject, "run_failed_receipt", async () => {
+          await appendRunCompletionReceipts(workingProject, failed);
+          await syncProjectPassport(store, workingProject.id);
+        });
         codex.emitRun(run.id, { type: "failed", run: failed });
       });
       return sendJson(res, 202, { run: store.getRun(run.id) });
+    }
+    if (req.method === "POST" && parts[3] === "passport" && parts[4] === "sync") {
+      const { passport } = await syncProjectPassport(store, project.id);
+      return sendJson(res, 200, { passport });
+    }
+    if (req.method === "POST" && parts[3] === "passport" && parts[4] === "schema9-import") {
+      const body = await jsonBody(req, 6 * 1024 * 1024);
+      return sendJson(res, 201, { report: await importSchema9Passport(project, body) });
+    }
+    if (req.method === "GET" && parts[3] === "passport" && parts[4] === "schema9-export") {
+      const imported = await readImportedSchema9Passport(project);
+      const encoded = encodeURIComponent(imported.report.file_name || "schema9-passport.json").replaceAll("'", "%27");
+      return sendBuffer(res, 200, imported.buffer, { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename*=UTF-8''${encoded}` });
+    }
+    if (req.method === "POST" && parts[3] === "revision" && parts[4] === "roadmap") {
+      const body = await jsonBody(req, 6 * 1024 * 1024);
+      return sendJson(res, 201, { workspace: await importRevisionRoadmap(project, body.content) });
+    }
+    if (req.method === "POST" && parts[3] === "revision" && parts[4] === "decisions" && parts[5]) {
+      const body = await jsonBody(req);
+      return sendJson(res, 200, { workspace: await saveRevisionDecision(project, parts[5], body) });
+    }
+    if (req.method === "POST" && parts[3] === "revision" && parts[4] === "finalize") {
+      const body = await jsonBody(req);
+      return sendJson(res, 200, { workspace: await finalizeRevisionInput(project, body.authorWords) });
+    }
+    if (req.method === "GET" && parts[3] === "revision" && parts[4] === "export") {
+      const exported = await readRevisionInput(project);
+      return sendBuffer(res, 200, exported.buffer, { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": "attachment; filename*=UTF-8''author-adjudication-input.json" });
+    }
+    if (req.method === "POST" && parts[3] === "verification" && parts[4] === "pdf" && parts[5]) {
+      const source = store.getSource(parts[5]);
+      if (!source || source.projectId !== project.id) return sendJson(res, 404, { error: "来源不存在" });
+      return sendJson(res, 200, { preflight: await runPdfPreflight(project, source), status: await readVerificationStatus(project) });
+    }
+    if (req.method === "POST" && parts[3] === "verification" && parts[4] === "citations") {
+      const body = await jsonBody(req);
+      return sendJson(res, 200, await runProgrammaticCitationVerification(project, body));
     }
     if (req.method === "GET" && parts[3] === "versions" && parts.length === 4) {
       return sendJson(res, 200, { versions: store.listStageVersions(project.id, url.searchParams.get("stage")) });
@@ -468,6 +544,7 @@ async function routeApi(req, res, url) {
     if (!["verified", "rejected", "conflicted", "pending"].includes(body.status)) throw new Error("无效的证据核验状态");
     const claim = store.updateEvidenceClaim(parts[2], { verificationStatus: body.status, note: body.note || null, verifiedAt: body.status === "pending" ? null : new Date().toISOString() });
     if (!claim) return sendJson(res, 404, { error: "证据卡不存在" });
+    await syncProjectPassport(store, claim.projectId);
     return sendJson(res, 200, { claim });
   }
   if (req.method === "DELETE" && parts[0] === "api" && parts[1] === "evidence" && parts[2] && parts.length === 3) {
@@ -478,6 +555,7 @@ async function routeApi(req, res, url) {
     const target = path.join(project.projectPath, "02-sources", "evidence-cards", "evidence.jsonl");
     await mkdir(path.dirname(target), { recursive: true });
     await appendFile(target, `${JSON.stringify({ type: "evidence.deleted", evidenceId: claim.id, deletedAt: new Date().toISOString() })}\n`, "utf8");
+    await syncProjectPassport(store, claim.projectId);
     return sendJson(res, 200, { deleted: true });
   }
   if (req.method === "POST" && parts[0] === "api" && parts[1] === "runs" && parts[2] && parts[3] === "reviews") {
@@ -530,13 +608,37 @@ for (const interrupted of store.recoverInterruptedRuns()) {
   const artifactPath = await saveRunDraft(project, interrupted);
   const saved = store.updateRun(interrupted.id, { artifactPath });
   await appendRunEvent(project, { type: `run.${saved.status}`, run: saved, recoveredAt: new Date().toISOString() });
+  await bestEffortLedger(project, "recovered_run_receipt", async () => {
+    await syncProjectPassport(store, project.id);
+    await appendRunCompletionReceipts(project, saved);
+    await syncProjectPassport(store, project.id);
+  });
 }
 if (process.env.AI_RESEARCH_SKIP_CODEX_START !== "1") codex.start().catch(() => {});
 
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${HOST}:${PORT}`);
-    if (url.pathname.startsWith("/api/")) await routeApi(req, res, url);
+    if (url.pathname === "/api/auth/register" && req.method === "POST") {
+      const body = await jsonBody(req);
+      const result = registerLocalAccount(body.account, body.password);
+      setLocalSessionCookie(res, result.token);
+      sendJson(res, 201, { ok: true, user: result.user });
+    } else if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      const body = await jsonBody(req);
+      const result = loginLocalAccount(body.account, body.password);
+      setLocalSessionCookie(res, result.token);
+      sendJson(res, 200, { ok: true, user: result.user });
+    } else if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+      logoutLocalSession(req); clearLocalSessionCookie(res); sendJson(res, 200, { ok: true });
+    } else if (url.pathname === "/api/session" && req.method === "GET") {
+      const user = localSession(req);
+      if (!user) throw Object.assign(new Error("请先登录"), { status: 401 });
+      sendJson(res, 200, { user });
+    } else if (url.pathname.startsWith("/api/")) {
+      if (url.pathname !== "/api/health") requireLocalSession(req);
+      await routeApi(req, res, url);
+    }
     else await serveStatic(res, url.pathname);
   } catch (error) {
     if (!res.headersSent) sendJson(res, error.status || 400, { error: error.message || String(error) });
@@ -544,5 +646,5 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => console.log(`AI科研工作台已启动：http://${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`academic-research-skills 工作台已启动：http://${HOST}:${PORT}`));
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { codex.stop(); server.close(() => process.exit(0)); });

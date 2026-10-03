@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { normalizeTrialAccount, trialLoginEmail, validateTrialPassword } from "../cloud/auth-trial.mjs";
 
 describe("trial authentication rules", () => {
-  it("accepts normalized email and mainland phone identifiers", () => {
+  it("accepts usernames, normalized email and mainland phone identifiers", () => {
     expect(normalizeTrialAccount(" Researcher@Example.COM ")).toBe("researcher@example.com");
     expect(normalizeTrialAccount("+86 138-0013-8000")).toBe("13800138000");
-    expect(() => normalizeTrialAccount("lab2026a")).toThrow(/手机号或邮箱/);
+    expect(normalizeTrialAccount("Lab2026_A")).toBe("lab2026_a");
+    expect(normalizeTrialAccount("研究员-01")).toBe("研究员-01");
+    expect(() => normalizeTrialAccount("ab")).toThrow(/3–32 位用户名/);
   });
 
   it("requires 8-12 password characters with all required categories", () => {

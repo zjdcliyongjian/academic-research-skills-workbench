@@ -2,6 +2,14 @@ import { SKILL_REGISTRY } from "../server/config.mjs";
 import { stageForSkill } from "../server/research-state.mjs";
 
 const skillGuidance = {
+  "ars-scope": "以苏格拉底式提问收敛研究问题、边界、约束和成功标准。问题未收敛前不替作者生成最终研究问题。",
+  "ars-research": "围绕已确认问题整理来源、证据、争议和缺口；明确全文读取状态，不把检索结果当作已核验全文。",
+  "ars-write": "按 plan、outline、draft 或 abstract 的明确范围写作，严格区分来源事实、计划、推论和真实结果。",
+  "ars-integrity": "以只读方式执行 Stage 2.5 完整性检查，核对声明—引用对齐、来源存在性、证据强度和阻断项。",
+  "ars-review": "以作者确认的审查目标执行只读同行评审，保留不同意见，形成可定位的分级问题和编辑决定。",
+  "ars-revise": "先形成作者可裁决的返修路线，只处理明确授权为 will_address 的项目，并保留逐条回复和残余风险。",
+  "ars-finalize": "执行 Stage 4.5 最终完整性核验，阻断项未关闭时停止定稿并列出作者待办。",
+  // Legacy guidance remains for historical cloud runs.
   "vibe-research-workflow": "判断研究阶段，输出阶段目标、六个月以内的分阶段路线、每阶段输入/任务/输出/验收门槛、未来两周清单、暂停事项和人工决策点。",
   "idea-evaluator": "完成致命缺陷审计、创新性/重要性/可行性/资源匹配/完成概率评分，给出继续、修改后重评、暂缓或终止结论。",
   "deep-research": "只基于提供的来源与证据梳理研究格局、方法比较、冲突、反例、空白和待核验引用。不得声称已联网检索未提供的资料。",

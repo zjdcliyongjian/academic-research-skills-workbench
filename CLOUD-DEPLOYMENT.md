@@ -50,7 +50,7 @@ $bytes = New-Object byte[] 32
 - `MAX_GLOBAL_ACTIVE_RUNS=20`
 - 不再配置平台共享的 `PADDLEOCR_ACCESS_TOKEN`；每位用户在“模型配置 → PDF 解析服务”中填写自己的百度 AI Studio Token，服务端使用 `BYOK_MASTER_KEY` 加密保存。
 
-外部试用必须同时配置 `UPSTASH_REDIS_REST_URL`、`UPSTASH_REDIS_REST_TOKEN`、`QSTASH_TOKEN`、`QSTASH_CURRENT_SIGNING_KEY`、`QSTASH_NEXT_SIGNING_KEY` 和 `PUBLIC_APP_URL`。当前线上访问域名为 `https://ai-research-copilot-workbench.vercel.app`，因此生产环境的 `PUBLIC_APP_URL` 应填写同一地址。运行任务与 PDF/OCR 来源处理都会进入 QStash，Redis 负责跨实例限流和全局并发背压。`ALLOW_SYNCHRONOUS_DEMO_RUNS=true` 只适合本地或短时演示。
+外部试用必须同时配置 `UPSTASH_REDIS_REST_URL`、`UPSTASH_REDIS_REST_TOKEN`、`QSTASH_TOKEN`、`QSTASH_CURRENT_SIGNING_KEY`、`QSTASH_NEXT_SIGNING_KEY` 和 `PUBLIC_APP_URL`。当前线上访问域名为 `https://academic-research-skills-workbench.vercel.app`，因此生产环境的 `PUBLIC_APP_URL` 应填写同一地址。运行任务与 PDF/OCR 来源处理都会进入 QStash，Redis 负责跨实例限流和全局并发背压。`ALLOW_SYNCHRONOUS_DEMO_RUNS=true` 只适合本地或短时演示。
 
 用户配置 PaddleOCR Token 后，PDF 会优先通过官方托管的 PP-StructureV3 解析。处理时，服务端会向 PaddleOCR 提交一个 15 分钟有效的私有文件签名地址；这意味着 PDF 内容会离开本系统并由 PaddleOCR 服务处理。未配置 Token 的账号自动使用 PDF.js＋Tesseract，不会把 PDF 提交给百度。涉及保密、未公开或受数据出境约束的资料应保持未配置状态，或删除个人 Token。不要把任何用户 Token 写入 `VITE_` 变量、日志或平台共享环境变量。
 

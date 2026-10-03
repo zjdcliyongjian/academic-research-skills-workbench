@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BookOpenText, Check, CircleDot, Download, Eye, FileText, Link2, LoaderCircle, RefreshCw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, BookOpenText, Check, CircleDot, Download, Eye, FileText, Link2, LoaderCircle, RefreshCw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { api } from "./api";
 import { parseReadingContent } from "./readingView";
 import type { ProjectDetail, ResearchProject, SourcePreview, SourceUploadItem } from "./types";
@@ -35,6 +35,14 @@ export function SourceWorkspace({ project, detail, busy, uploadItems, url, setUr
   const [sourceBusy, setSourceBusy] = useState("");
   const [preview, setPreview] = useState<SourcePreview | null>(null);
   const [previewMode, setPreviewMode] = useState<"reading" | "raw">("reading");
+  const [claimBusy, setClaimBusy] = useState("");
+  const [claimType, setClaimType] = useState<"source_fact" | "synthesis" | "inference" | "unknown">("source_fact");
+  const [claimSourceId, setClaimSourceId] = useState("");
+  const [claimText, setClaimText] = useState("");
+  const [claimLocator, setClaimLocator] = useState("");
+  const [claimQuote, setClaimQuote] = useState("");
+  const [claimNote, setClaimNote] = useState("");
+  const [claimFilter, setClaimFilter] = useState<"all" | "pending" | "verified" | "conflicted" | "rejected">("all");
   const process = async (sourceId: string) => {
     setSourceBusy(`process-${sourceId}`);
     try {
@@ -78,6 +86,31 @@ export function SourceWorkspace({ project, detail, busy, uploadItems, url, setUr
     } catch (error) { onNotice((error as Error).message); }
     finally { setSourceBusy(""); }
   };
+  const createClaim = async () => {
+    setClaimBusy("create");
+    try {
+      await api.createEvidence(project.id, { sourceId: claimSourceId || undefined, claimType, claimText, locator: claimLocator, quoteText: claimQuote, note: claimNote });
+      setClaimText(""); setClaimLocator(""); setClaimQuote(""); setClaimNote("");
+      await onReload(); onNotice("Claim Registry 已新增一条待核验记录；尚未自动成为论文事实。");
+    } catch (error) { onNotice((error as Error).message); }
+    finally { setClaimBusy(""); }
+  };
+  const reviewClaim = async (claimId: string, status: "pending" | "verified" | "rejected" | "conflicted") => {
+    setClaimBusy(`${status}-${claimId}`);
+    try { await api.reviewEvidence(claimId, status); await onReload(); onNotice(`Claim Registry 已更新为“${({ pending: "待核验", verified: "已核验", rejected: "已拒绝", conflicted: "有冲突" } as const)[status]}”。`); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setClaimBusy(""); }
+  };
+  const deleteClaim = async (claimId: string) => {
+    if (!window.confirm("确定删除这条 Claim Registry 记录吗？删除事件仍会写入本地证据日志。")) return;
+    setClaimBusy(`delete-${claimId}`);
+    try { await api.deleteEvidence(claimId); await onReload(); onNotice("Claim Registry 记录已删除，删除事件已留痕。"); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setClaimBusy(""); }
+  };
+  const verifiedSources = detail?.sources.filter((source) => source.status === "content-verified") || [];
+  const visibleClaims = (detail?.evidenceClaims || []).filter((claim) => claimFilter === "all" || claim.verificationStatus === claimFilter);
+  const claimTypeLabels = { source_fact: "来源事实", synthesis: "综合判断", inference: "推论", unknown: "未知" } as const;
   const uploadedCount = uploadItems.filter((item) => item.status === "succeeded").length;
   const failedUploadCount = uploadItems.filter((item) => item.status === "failed").length;
   const finishedUploadCount = uploadedCount + failedUploadCount;
@@ -85,7 +118,7 @@ export function SourceWorkspace({ project, detail, busy, uploadItems, url, setUr
     queued: "等待上传", uploading: "上传中", succeeded: "上传成功 · 待处理", failed: "上传失败",
   };
   return <section className="workspace-section source-workspace">
-    <div className="page-heading"><div><span className="eyebrow">SOURCE & EVIDENCE LEDGER · PHASE 2A</span><h1>可信资料与证据</h1><p>原件只读；自动抽取和元数据识别只是候选，经过人工核验后才能作为来源事实。</p><small className="supported-formats">支持批量选择 PDF、DOCX、Markdown、TXT 与 CSV，单文件最多 200MB；扫描版 PDF 会自动进行中英文 OCR。</small></div><label className={`button primary file-button ${busy === "upload" ? "is-disabled" : ""}`}>{busy === "upload" ? <LoaderCircle className="spin"/> : <Upload/>}{busy === "upload" ? `正在上传 ${finishedUploadCount}/${uploadItems.length}` : "批量上传资料"}<input type="file" multiple disabled={busy === "upload"} accept=".pdf,.docx,.md,.txt,.csv" onChange={onUpload}/></label></div>
+    <div className="page-heading"><div><span className="eyebrow">SOURCE & EVIDENCE LEDGER</span><h1>可信资料与证据</h1><p>原件只读；自动抽取和元数据识别只是候选，经过人工核验后才能作为来源事实。</p><small className="supported-formats">支持批量选择 PDF、DOCX、Markdown、TXT 与 CSV，单文件最多 200MB；扫描版 PDF 会自动进行中英文 OCR。</small></div><label className={`button primary file-button ${busy === "upload" ? "is-disabled" : ""}`}>{busy === "upload" ? <LoaderCircle className="spin"/> : <Upload/>}{busy === "upload" ? `正在上传 ${finishedUploadCount}/${uploadItems.length}` : "批量上传资料"}<input type="file" multiple disabled={busy === "upload"} accept=".pdf,.docx,.md,.txt,.csv" onChange={onUpload}/></label></div>
     {uploadItems.length > 0 && <section className="upload-batch" aria-live="polite">
       <div className="upload-batch-head"><div><strong>本批上传</strong><span>{uploadedCount} 成功{failedUploadCount ? ` · ${failedUploadCount} 失败` : ""} · 共 {uploadItems.length} 个文件</span></div>{busy === "upload" && <span>同时上传最多 3 个文件</span>}</div>
       <div className="upload-batch-list">{uploadItems.map((item) => <div key={item.id} className={`upload-batch-item ${item.status}`}>
@@ -124,5 +157,24 @@ export function SourceWorkspace({ project, detail, busy, uploadItems, url, setUr
         <div className={`source-preview-paper ${previewMode === "raw" ? "is-raw" : "is-reading"}`}>{previewMode === "reading" ? <ReadingDocument content={preview.content} title={preview.source.title || preview.source.name}/> : <pre>{preview.content}</pre>}</div>
       </> : <div className="preview-placeholder"><Eye/><span className="eyebrow">EVIDENCE READING DESK</span><h3>处理来源后在这里核对正文</h3><p>PDF 会保留页码标记；扫描页会自动 OCR，但公式、表格、图片和识别结果仍需对照原件。</p></div>}</aside>
     </div>
+    <section className="evidence-section" aria-label="Claim Registry">
+      <div className="section-title"><div><span className="eyebrow">CLAIM REGISTRY · AUTHOR REVIEW</span><h2>声明与证据登记</h2></div><div className="claim-toolbar"><select value={claimFilter} onChange={(event) => setClaimFilter(event.target.value as typeof claimFilter)}><option value="all">全部状态</option><option value="pending">待核验</option><option value="verified">已核验</option><option value="conflicted">有冲突</option><option value="rejected">已拒绝</option></select><span>{visibleClaims.length} / {detail?.evidenceClaims.length || 0} 条</span></div></div>
+      <p className="claim-boundary"><AlertTriangle/>登记、抽取或 AI 建议都不等于事实成立。来源事实必须绑定已人工确认的正文与明确定位；“已核验”仍只表示完成了当前核验范围。</p>
+      <div className="evidence-layout">
+        <div className="input-card evidence-form">
+          <label>声明类型<select value={claimType} onChange={(event) => { const next = event.target.value as typeof claimType; setClaimType(next); if (next !== "source_fact") setClaimSourceId(""); }}><option value="source_fact">来源事实</option><option value="synthesis">综合判断</option><option value="inference">推论</option><option value="unknown">未知 / 待判断</option></select></label>
+          <label>关联来源<select value={claimSourceId} onChange={(event) => setClaimSourceId(event.target.value)} disabled={claimType !== "source_fact"}><option value="">{claimType === "source_fact" ? "请选择已确认正文的来源" : "此类型可不绑定单一来源"}</option>{verifiedSources.map((source) => <option value={source.id} key={source.id}>{source.title || source.name}</option>)}</select></label>
+          <label>声明内容<textarea value={claimText} onChange={(event) => setClaimText(event.target.value)} rows={4} placeholder="用一句可核验的话记录事实、综合或推论"/></label>
+          <label>证据定位<input value={claimLocator} onChange={(event) => setClaimLocator(event.target.value)} placeholder="例如：p.12 / §3.2 / Table 4"/></label>
+          <label>原文摘录<textarea value={claimQuote} onChange={(event) => setClaimQuote(event.target.value)} rows={3} placeholder="可选；保存时记录摘录哈希"/></label>
+          <label>边界备注<textarea value={claimNote} onChange={(event) => setClaimNote(event.target.value)} rows={2} placeholder="适用范围、冲突或仍需验证的内容"/></label>
+          <button className="button primary" disabled={!claimText.trim() || claimBusy === "create" || (claimType === "source_fact" && (!claimSourceId || !claimLocator.trim()))} onClick={createClaim}>{claimBusy === "create" ? <LoaderCircle className="spin"/> : <ShieldCheck/>}登记为待核验</button>
+        </div>
+        <div className="claim-list">{visibleClaims.length ? visibleClaims.map((claim) => {
+          const source = detail?.sources.find((item) => item.id === claim.sourceId);
+          return <article key={claim.id}><div><span className="claim-type">{claimTypeLabels[claim.claimType]}</span><span className={`claim-status ${claim.verificationStatus}`}>{({ pending: "待核验", verified: "已核验", conflicted: "有冲突", rejected: "已拒绝" } as const)[claim.verificationStatus]}</span></div><strong>{claim.claimText}</strong><code>{source ? source.title || source.name : "无单一来源"}{claim.locator ? ` · ${claim.locator}` : ""}</code>{claim.quoteText && <blockquote>{claim.quoteText}</blockquote>}{claim.note && <p>{claim.note}</p>}<div className="claim-actions"><button className="approve" disabled={Boolean(claimBusy)} onClick={() => reviewClaim(claim.id, "verified")}><Check/>核验</button><button disabled={Boolean(claimBusy)} onClick={() => reviewClaim(claim.id, "conflicted")}><AlertTriangle/>冲突</button><button disabled={Boolean(claimBusy)} onClick={() => reviewClaim(claim.id, "rejected")}><X/>拒绝</button><button className="danger-action" disabled={claimBusy === `delete-${claim.id}`} onClick={() => deleteClaim(claim.id)}><Trash2/>删除</button></div></article>;
+        }) : <div className="empty"><CircleDot/><h3>当前筛选下没有声明</h3><p>先从已确认正文中登记可定位的来源事实，再逐条核验。</p></div>}</div>
+      </div>
+    </section>
   </section>;
 }

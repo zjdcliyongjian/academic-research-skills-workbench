@@ -3,6 +3,8 @@ dist/
 data/
 .vercel/
 .obsidian/
+.ars-runtime/
+supabase/.temp/
 
 # Local credentials and runtime state
 .env*

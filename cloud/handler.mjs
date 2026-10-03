@@ -85,6 +85,15 @@ async function auditAdmin(adminId, action, targetUserId = null, resourceType = n
   if (result.error) throw new Error(result.error.message);
 }
 
+async function contactBloggerEnabled() {
+  const profile = await adminClient().from("profiles").select("id").eq("role", "admin").order("created_at", { ascending: true }).limit(1).maybeSingle();
+  if (profile.error) throw new Error(profile.error.message);
+  if (!profile.data?.id) return true;
+  const account = await adminClient().auth.admin.getUserById(profile.data.id);
+  if (account.error) throw new Error(account.error.message);
+  return account.data.user?.app_metadata?.contact_blogger_enabled !== false;
+}
+
 async function assertProject(ownerId, projectId) { return oneRow("projects", ownerId, projectId); }
 async function assertRunProject(ownerId, run) { return assertProject(ownerId, run.project_id); }
 function assertBelongs(row, projectId, label = "记录") {
@@ -231,6 +240,7 @@ export async function handleCloudRequest(req, res) {
       enforceTrialRegistrationRateLimit(req);
       const input = await bodyJson(req);
       const account = normalizeTrialAccount(input.account);
+      if (account === "admin") throw Object.assign(new Error("admin 是系统保留管理员账号，不能注册"), { statusCode: 400 });
       const password = validateTrialPassword(input.password);
       const loginEmail = trialLoginEmail(account);
       const created = await adminClient().auth.admin.createUser({
@@ -242,7 +252,7 @@ export async function handleCloudRequest(req, res) {
       });
       if (created.error || !created.data.user) {
         const detail = created.error?.message || "账号创建失败";
-        if (/already|registered|exists/i.test(detail)) throw Object.assign(new Error("该手机号或邮箱已注册，请直接登录"), { statusCode: 409 });
+        if (/already|registered|exists/i.test(detail)) throw Object.assign(new Error("该账号已注册，请直接登录"), { statusCode: 409 });
         throw new Error(detail);
       }
       const profile = await adminClient().from("profiles").upsert({
@@ -256,6 +266,10 @@ export async function handleCloudRequest(req, res) {
       }, { onConflict: "id" });
       if (profile.error) throw new Error(profile.error.message);
       return json(res, 201, { ok: true });
+    }
+
+    if (path === "/public/settings" && method === "GET") {
+      return json(res, 200, { contactBloggerEnabled: await contactBloggerEnabled() });
     }
 
     const user = await authenticate(req);
@@ -290,6 +304,17 @@ export async function handleCloudRequest(req, res) {
     }
 
     let adminMatch;
+    if (path === "/admin/settings/contact-blogger" && method === "PUT") {
+      assertAdmin(user);
+      const input = await bodyJson(req);
+      if (typeof input.enabled !== "boolean") throw Object.assign(new Error("联系博主开关必须是布尔值"), { statusCode: 400 });
+      const appMetadata = { ...(user.app_metadata || {}), role: "admin", contact_blogger_enabled: input.enabled };
+      const updated = await adminClient().auth.admin.updateUserById(user.id, { app_metadata: appMetadata });
+      if (updated.error) throw new Error(updated.error.message);
+      await auditAdmin(user.id, "update_contact_blogger_visibility", null, "system_setting", "contact_blogger", { enabled: input.enabled });
+      return json(res, 200, { ok: true, contactBloggerEnabled: input.enabled });
+    }
+
     if (path === "/admin/users" && method === "GET") {
       assertAdmin(user);
       const [authResult, profilesResult, projectsResult, sourcesResult] = await Promise.all([

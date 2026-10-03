@@ -191,7 +191,7 @@ function stripFrontmatter(value) {
   return value.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
 }
 
-const stageLabels = { brief: "研究工作流", idea: "Idea 评估", research: "文献调研", blueprint: "论文蓝图", writing: "章节写作", production: "润色与图表", review: "投稿审查" };
+const stageLabels = { brief: "范围界定", idea: "深度调研", research: "论文写作", blueprint: "完整性核验Ⅰ", writing: "同行评审", production: "返修与复审", review: "最终核验与定稿" };
 
 async function selectedContent(project, versions, runs, options = {}) {
   if (options.mode === "draft") {

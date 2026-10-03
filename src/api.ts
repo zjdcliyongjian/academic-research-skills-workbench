@@ -59,10 +59,28 @@ async function download(url: string, suggestedName?: string) {
 export const api = {
   trialRegister: (input: { account: string; password: string }) =>
     request<{ ok: true }>("/api/auth/register", { method: "POST", body: JSON.stringify(input) }),
+  localLogin: (input: { account: string; password: string }) =>
+    request<{ ok: true; user: SessionInfo }>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
+  localLogout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST", body: "{}" }),
   session: () => request<{ user: SessionInfo }>("/api/session"),
   health: () => request<SystemHealth>("/api/health"),
   projects: () => request<{ projects: ResearchProject[] }>("/api/projects"),
   project: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
+  syncPassport: (id: string) => request<{ passport: ProjectDetail["passport"] }>(`/api/projects/${id}/passport/sync`, { method: "POST", body: "{}" }),
+  importSchema9Passport: (id: string, fileName: string, content: string) =>
+    request<{ report: NonNullable<ProjectDetail["schema9Import"]> }>(`/api/projects/${id}/passport/schema9-import`, { method: "POST", body: JSON.stringify({ fileName, content }) }),
+  downloadSchema9Passport: (id: string, name = "schema9-passport.json") => download(`/api/projects/${id}/passport/schema9-export`, name),
+  importRevisionRoadmap: (id: string, content: string) =>
+    request<{ workspace: NonNullable<ProjectDetail["revisionWorkspace"]> }>(`/api/projects/${id}/revision/roadmap`, { method: "POST", body: JSON.stringify({ content }) }),
+  saveRevisionDecision: (id: string, itemId: string, input: { authorTriage: string; authorReason: string; authorWords: string; authorizedTargets: Array<{ blockId: string; allowedOperations: string[] }> }) =>
+    request<{ workspace: NonNullable<ProjectDetail["revisionWorkspace"]> }>(`/api/projects/${id}/revision/decisions/${encodeURIComponent(itemId)}`, { method: "POST", body: JSON.stringify(input) }),
+  finalizeRevisionInput: (id: string, authorWords: string) =>
+    request<{ workspace: NonNullable<ProjectDetail["revisionWorkspace"]> }>(`/api/projects/${id}/revision/finalize`, { method: "POST", body: JSON.stringify({ authorWords }) }),
+  downloadRevisionInput: (id: string) => download(`/api/projects/${id}/revision/export`, "author-adjudication-input.json"),
+  runPdfPreflight: (id: string, sourceId: string) =>
+    request<{ preflight: NonNullable<ProjectDetail["verification"]>["pdfPreflights"][number]; status: NonNullable<ProjectDetail["verification"]> }>(`/api/projects/${id}/verification/pdf/${encodeURIComponent(sourceId)}`, { method: "POST", body: "{}" }),
+  runCitationVerification: (id: string, input: { authorized: boolean; authorizationText: string; revalidateStale: boolean }) =>
+    request<{ report: NonNullable<NonNullable<ProjectDetail["verification"]>["latestProgrammatic"]>; status: NonNullable<ProjectDetail["verification"]> }>(`/api/projects/${id}/verification/citations`, { method: "POST", body: JSON.stringify(input) }),
   createProject: (input: CreateProjectInput) =>
     request<{ project: ResearchProject; codexWarning?: string }>("/api/projects", {
       method: "POST",
@@ -201,6 +219,9 @@ export const api = {
   saveCloudOcrConfig: (accessToken: string) =>
     request<{ ok: true; config: OcrConfig }>("/api/cloud/ocr", { method: "PUT", body: JSON.stringify({ accessToken }) }),
   deleteCloudOcrConfig: () => request<{ deleted: boolean }>("/api/cloud/ocr", { method: "DELETE" }),
+  publicSettings: () => request<{ contactBloggerEnabled: boolean }>("/api/public/settings"),
+  adminSetContactBloggerEnabled: (enabled: boolean) =>
+    request<{ ok: true; contactBloggerEnabled: boolean }>("/api/admin/settings/contact-blogger", { method: "PUT", body: JSON.stringify({ enabled }) }),
   submitFeedback: (input: { projectId?: string | null; category: "bug" | "feature" | "question" | "other"; title: string; details: string; reproduction?: string; expected?: string; contact?: string; context: Record<string, unknown> }) =>
     request<{ item: { id: string; status: string; createdAt: string } }>("/api/feedback", { method: "POST", body: JSON.stringify(input) }),
   adminUsers: () => request<{ items: AdminUserRecord[] }>("/api/admin/users"),

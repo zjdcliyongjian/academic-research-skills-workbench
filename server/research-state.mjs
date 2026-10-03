@@ -1,6 +1,14 @@
 export const PROJECT_STAGES = ["brief", "idea", "research", "blueprint", "writing", "production", "review", "export"];
 
 const ADOPTABLE_SKILL_STAGES = new Map([
+  ["ars-scope", "brief"],
+  ["ars-research", "idea"],
+  ["ars-write", "research"],
+  ["ars-integrity", "blueprint"],
+  ["ars-review", "writing"],
+  ["ars-revise", "production"],
+  ["ars-finalize", "review"],
+  // Legacy mappings keep existing projects and tests readable after migration.
   ["vibe-research-workflow", "brief"],
   ["idea-evaluator", "idea"],
   ["deep-research", "research"],

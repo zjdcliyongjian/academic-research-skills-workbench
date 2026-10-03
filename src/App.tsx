@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Archive, AlertTriangle, ArrowRight, ArrowUp, BookOpenText, BrainCircuit, Check, ChevronRight,
   Blocks, CircleDot, ClipboardCheck, Clock3, Database, DatabaseBackup, Download, Eye, ExternalLink, FileText,
-  FolderKanban, FlaskConical, KeyRound, Link2, LoaderCircle, LogOut, Menu, MessageSquare, Moon, Plus,
-  PackageCheck, RefreshCw, RotateCcw, Save, ScrollText, Settings, ShieldCheck, Sparkles, Sun, Trash2, Upload, UserCog, X,
+  FolderKanban, FlaskConical, KeyRound, Link2, LoaderCircle, LogOut, Menu, MessageSquare, Plus,
+  PackageCheck, RefreshCw, RotateCcw, Save, ScrollText, Settings, ShieldCheck, Sparkles, Trash2, Upload, UserCog, X,
 } from "lucide-react";
 import { api, subscribeRun, type AdminFeedbackRecord, type AdminFileRecord, type AdminUserRecord, type SessionInfo } from "./api";
 import type { ApprovalRequest, CreateProjectInput, ExportFile, ExportPreview, IdeaEvaluationInput, ProjectDetail, ResearchProject, RunRecord, SourceUploadItem, StageVersion, SystemHealth } from "./types";
@@ -19,40 +19,44 @@ import { initialOnboardingStep, type OnboardingStep } from "./cloud/onboarding";
 import { prepareSourceUploadBatch, retrySourceUploadItem, runSourceUploadBatch } from "./sourceUploadBatch";
 import { buildRunConversations, conversationForRun } from "./runConversation";
 
-type View = "overview" | "sources" | "workflow" | "idea" | "research" | "blueprint" | "writing" | "production" | "review" | "skills" | "export" | "feedback" | "contact" | "admin" | "model" | "system";
+type View = "overview" | "sources" | "workflow" | "idea" | "research" | "blueprint" | "writing" | "production" | "review" | "skills" | "export" | "feedback" | "admin" | "model" | "system";
 
 const stages = [
-  { id: "brief", label: "课题卡", icon: ClipboardCheck },
-  { id: "idea", label: "Idea 评估", icon: BrainCircuit },
-  { id: "research", label: "文献调研", icon: BookOpenText },
-  { id: "blueprint", label: "论文蓝图", icon: ScrollText },
-  { id: "writing", label: "章节写作", icon: FileText },
-  { id: "production", label: "图表整稿", icon: FlaskConical },
-  { id: "review", label: "投稿审查", icon: ShieldCheck },
+  { id: "brief", label: "范围界定", icon: ClipboardCheck },
+  { id: "idea", label: "深度调研", icon: BrainCircuit },
+  { id: "research", label: "论文写作", icon: BookOpenText },
+  { id: "blueprint", label: "完整性Ⅰ", icon: ShieldCheck },
+  { id: "writing", label: "同行评审", icon: FileText },
+  { id: "production", label: "返修复审", icon: FlaskConical },
+  { id: "review", label: "最终核验", icon: ShieldCheck },
   { id: "export", label: "正式导出", icon: Archive },
 ] as const;
 
 const nav = [
   { id: "overview", label: "项目台", icon: FolderKanban },
   { id: "sources", label: "资料与证据", icon: Database },
-  { id: "workflow", label: "研究路线", icon: FolderKanban },
-  { id: "idea", label: "Idea 评估", icon: BrainCircuit },
-  { id: "research", label: "文献调研", icon: BookOpenText },
-  { id: "blueprint", label: "论文蓝图", icon: ScrollText },
-  { id: "writing", label: "章节写作", icon: FileText },
-  { id: "production", label: "图表整稿", icon: FlaskConical },
-  { id: "review", label: "投稿审查", icon: ShieldCheck },
-  { id: "skills", label: "科研 Skills", icon: Blocks },
-  { id: "export", label: "导出", icon: Download },
+  { id: "workflow", label: "范围界定", icon: FolderKanban },
+  { id: "idea", label: "深度调研", icon: BrainCircuit },
+  { id: "research", label: "论文写作", icon: BookOpenText },
+  { id: "blueprint", label: "完整性核验", icon: ShieldCheck },
+  { id: "writing", label: "同行评审", icon: FileText },
+  { id: "production", label: "返修与复审", icon: FlaskConical },
+  { id: "review", label: "Passport 与定稿", icon: ClipboardCheck },
+  { id: "skills", label: "ARS 能力", icon: Blocks },
+  { id: "export", label: "成果导出", icon: Download },
   { id: "feedback", label: "反馈与建议", icon: MessageSquare },
-  { id: "contact", label: "联系博主", icon: MessageSquare },
   { id: "admin", label: "管理后台", icon: UserCog },
+  { id: "contact", label: "联系博主", icon: MessageSquare },
   { id: "model", label: "模型配置", icon: KeyRound },
   { id: "system", label: "系统设置", icon: Settings },
 ] as const;
 
 const stageOrder = stages.map((item) => item.id);
 const labels: Record<string, string> = {
+  "ars-scope": "范围界定", "ars-research": "深度调研", "ars-write": "论文写作",
+  "ars-integrity": "完整性核验Ⅰ", "ars-review": "同行评审", "ars-revise": "返修与复审",
+  "ars-finalize": "最终核验与定稿",
+  // Legacy labels keep historical runs readable.
   "idea-evaluator": "Idea 评估", "deep-research": "深度文献调研",
   "tech-paper-template": "技术论文蓝图", "benchmark-paper-template": "Benchmark 论文蓝图",
   "intro-drafter": "引言起草", "paper-writer": "论文写作", "paper-polish": "论文润色",
@@ -62,9 +66,9 @@ const labels: Record<string, string> = {
 };
 
 const skillGroups = [
-  { id: "foundation", label: "判断与调研", caption: "先确定方向、证据和论文结构，再进入生产。" },
-  { id: "production", label: "写作与图表", caption: "以已确认的蓝图、证据和实验结果为输入。" },
-  { id: "review", label: "投稿与回应", caption: "发现问题、规划回应，最终决定仍由作者作出。" },
+  { id: "foundation", label: "研究与写作", caption: "从问题收敛、证据综合到论文草稿，逐道通过作者检查点。" },
+  { id: "production", label: "完整性与评审", caption: "先核验声明与引用，再以作者确认的标准执行只读同行评审。" },
+  { id: "review", label: "返修与交付", caption: "返修决定属于作者；最终核验通过后才进入正式交付。" },
 ] as const;
 
 function relativeDate(value: string) {
@@ -91,6 +95,35 @@ function statusText(status: RunRecord["status"]) {
 
 function Empty({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return <div className="empty"><CircleDot size={24}/><h3>{title}</h3><p>{body}</p>{action}</div>;
+}
+
+function CosmicEmptyDashboard({ onCreate }: { onCreate: () => void }) {
+  const capabilities = [
+    { icon: Database, title: "资料与证据", body: "收集、管理和分析各类资料，建立可回溯的证据基础。" },
+    { icon: BrainCircuit, title: "深度调研", body: "基于多源信息进行深入分析，保留争议、边界与研究缺口。" },
+    { icon: BookOpenText, title: "论文写作", body: "AI 辅助形成可审阅草稿，关键判断仍由研究者确认。" },
+    { icon: FileText, title: "同行评审", body: "用作者确认的标准形成分级意见和编辑决定。" },
+    { icon: FolderKanban, title: "范围界定", body: "明确研究边界、目标和成功标准，让课题从问题出发。" },
+    { icon: ShieldCheck, title: "完整性核验", body: "检查声明、引用、来源和版本，确保研究过程可追溯。" },
+    { icon: ClipboardCheck, title: "Passport 与定稿", body: "闭合跨阶段材料边界，形成可交付的正式成果。" },
+    { icon: Download, title: "成果导出", body: "支持多种格式导出，便于审阅、归档和继续研究。" },
+  ];
+  return <section className="cosmic-dashboard" aria-label="科研工作台概览">
+    <div className="cosmic-dashboard-main">
+      <section className="cosmic-welcome">
+        <div><span className="eyebrow">ACADEMIC RESEARCH SKILLS</span><h1>从第一个课题开始</h1><p>创建课题后，工作台会把资料、AI 草稿、人工确认和正式成果分层保存，帮助你完成更深入、更可信的研究。</p><button className="button primary" onClick={onCreate}><Plus/>创建课题</button></div>
+        <div className="cosmic-orbit" aria-hidden="true"><BookOpenText/><i/><i/><i/><span>资料沉淀</span><b>AI 草稿</b><em>人工确认</em></div>
+      </section>
+      <div className="cosmic-section-heading"><div><Sparkles/><strong>核心功能</strong><span>覆盖从问题到成果的完整研究流程</span></div><small>RESEARCH · WRITE · REVIEW · REVISE</small></div>
+      <div className="cosmic-capability-grid">{capabilities.map(({ icon: Icon, title, body }) => <article key={title}><span><Icon/></span><div><strong>{title}</strong><p>{body}</p></div></article>)}</div>
+      <section className="cosmic-activity"><Clock3/><div><strong>暂无活动记录</strong><p>创建课题后，这里将显示研究活动、文件更新和重要里程碑。</p></div></section>
+    </div>
+    <aside className="cosmic-dashboard-rail">
+      <section><span className="eyebrow">RESEARCH OVERVIEW</span><h2>研究概览</h2><p>从这里开始你的学术探索</p><div className="cosmic-stat-grid"><div><FolderKanban/><strong>0</strong><span>课题</span></div><div><Database/><strong>0</strong><span>资料</span></div><div><FileText/><strong>0</strong><span>笔记</span></div><div><ClipboardCheck/><strong>0</strong><span>待办</span></div></div></section>
+      <blockquote>好的研究，<br/>始于一个值得探索的问题。<small>RESEARCH FOR A BRIGHTER TOMORROW</small></blockquote>
+      <section className="cosmic-quickstart"><span className="eyebrow">QUICK START</span><h2>快速开始</h2><button onClick={onCreate}><FileText/><span><strong>提出研究问题</strong><small>从兴趣出发，明确研究方向</small></span><ArrowRight/></button><button onClick={onCreate}><Database/><span><strong>浏览文献资料</strong><small>为课题建立可信证据库</small></span><ArrowRight/></button><button onClick={onCreate}><FolderKanban/><span><strong>设定研究范围</strong><small>形成清晰的研究边界</small></span><ArrowRight/></button></section>
+    </aside>
+  </section>;
 }
 
 function AccountPasswordSettings({ onNotice }: { onNotice: (value: string) => void }) {
@@ -485,10 +518,10 @@ function CodexRunWorkspace({
 function SkillsCatalog({ health, onGo }: { health: SystemHealth | null; onGo: (view: View) => void }) {
   const items = health?.skills.items || [];
   const ready = items.filter((skill) => skill.found && skill.enabled).length;
-  const routeFor = (skillName: string, stage: string): View => skillName === "vibe-research-workflow" ? "workflow" : stage === "idea" ? "idea" : skillName === "deep-research" ? "research" : stage === "blueprint" ? "blueprint" : ["intro-drafter", "paper-writer"].includes(skillName) ? "writing" : ["paper-polish", "figure-designer", "drawio-reconstruction"].includes(skillName) ? "production" : "review";
+  const routeFor = (_skillName: string, stage: string): View => stage === "brief" ? "workflow" : stage as View;
   return <section className="workspace-section skill-catalog">
-    <div className="page-heading skill-heading"><div><span className="eyebrow">RESEARCH CAPABILITY INDEX</span><h1>科研 Skills</h1><p>12 个科研能力按研究生命周期组织。这里说明每个 Skill 具体做什么、需要什么输入、交付什么结果，以及必须由人确认的边界。</p></div><div className="skill-readiness"><strong>{ready}<span>/ {health?.skills.expected || 12}</span></strong><small>本机已就绪</small></div></div>
-    <div className="skill-principle"><ShieldCheck/><div><strong>Skill 是专业工作方法，不是自动替你作决定。</strong><span>每次运行只加载当前需要的 Skill；来源、实验结果、语义修改和投稿动作仍保留人工确认。</span></div></div>
+    <div className="page-heading skill-heading"><div><span className="eyebrow">ARS-CODEX CAPABILITY INDEX</span><h1>ARS 科研能力</h1><p>7 个工作台能力统一路由到官方 academic-research-suite。每次只加载一个物理 Skill，再按当前环节读取对应 workflow。</p></div><div className="skill-readiness"><strong>{ready}<span>/ {health?.skills.expected || 7}</span></strong><small>本机已就绪</small></div></div>
+    <div className="skill-principle"><ShieldCheck/><div><strong>ARS 是流程与质量门，不是无人值守的自动论文机。</strong><span>研究问题、引用、作者裁决、伦理/机构授权、稿件修改和最终提交始终保留人工责任。</span></div></div>
     {health ? skillGroups.map((group) => {
       const groupItems = items.filter((skill) => skill.category === group.id);
       return <section className="skill-group" key={group.id}>
@@ -506,8 +539,105 @@ function SkillsCatalog({ health, onGo }: { health: SystemHealth | null; onGo: (v
   </section>;
 }
 
+function MaterialPassportPanel({ detail, refreshing = false, onRefresh }: { detail: ProjectDetail; refreshing?: boolean; onRefresh?: () => void }) {
+  const verifiedSources = detail.sources.filter((item) => item.status === "content-verified").length;
+  const verifiedFacts = detail.evidenceClaims.filter((item) => item.claimType === "source_fact" && item.verificationStatus === "verified").length;
+  const unresolved = detail.evidenceClaims.filter((item) => ["pending", "conflicted"].includes(item.verificationStatus)).length;
+  const activeVersions = detail.versions.filter((item) => item.status === "active").length;
+  const passportReady = verifiedSources > 0 && activeVersions > 0 && unresolved === 0;
+  const passport = detail.passport;
+  const ledger = passport?.run_ledger;
+  const ledgerReady = ledger?.status === "ok";
+  return <section className="passport-panel" aria-label="Material Passport 状态">
+    <div className="passport-seal"><span>ARS</span><strong>MP</strong><small>MATERIAL PASSPORT</small></div>
+    <div className="passport-copy"><span className="eyebrow">RESET BOUNDARY · LOCAL LEDGER</span><div className="passport-title-row"><h2>Material Passport</h2>{onRefresh && <button className="passport-refresh" onClick={onRefresh} disabled={refreshing}><RefreshCw className={refreshing ? "spin" : ""}/>{refreshing ? "同步中" : "同步收据"}</button>}</div><p>这是跨阶段交接的材料边界：记录来源、证据、版本、作者裁决与检查点。它不是“论文正确”证书，也不会替代人工阅读。</p><code>{detail.project.projectPath}\10-passport\material-passport.json</code></div>
+    <dl className="passport-stats"><div><dt>已核验来源</dt><dd>{verifiedSources}</dd></div><div><dt>已核验事实</dt><dd>{verifiedFacts}</dd></div><div><dt>正式版本</dt><dd>{activeVersions}</dd></div><div><dt>未解决项</dt><dd>{unresolved}</dd></div></dl>
+    <div className={`passport-state ${passportReady ? "ready" : "pending"}`}><ShieldCheck/><div><strong>{passportReady ? "可进入最终核验" : "材料边界尚未闭合"}</strong><span>{passportReady ? "仍需运行 Stage 4.5 并由作者确认定稿。" : "先补齐核验来源、正式版本或未解决证据。"}</span></div></div>
+    <div className={`passport-ledger ${ledgerReady ? "ready" : "pending"}`}><ScrollText/><div><span className="eyebrow">ARS RUN LEDGER</span><strong>{ledgerReady ? `${ledger.entries} 条收据 · ${ledger.backed} 项可确认` : ledger?.status === "missing" ? "收据链尚未开始" : "收据链当前不可用"}</strong><small>{ledgerReady ? ledger.ledger_path : ledger?.status === "missing" ? "首次运行 ARS 阶段后自动创建。" : ledger?.diagnostic || "请检查 ARS ledger 运行环境。"}</small></div>{passport && <code>{passport.schema_version} · {passport.projection_sha256.slice(0, 12)}</code>}</div>
+    {passport && <details className="passport-details"><summary>查看结构化边界与待办</summary><div className="passport-detail-grid"><div><span>来源投影</span><strong>{passport.literature_corpus_projection.length}</strong><small>阅读状态一律不从文件存在推断</small></div><div><span>Claim Registry</span><strong>{passport.claim_registry_projection.length}</strong><small>{passport.counts.unresolved_claims} 项尚未核验</small></div><div><span>作者检查点</span><strong>{passport.author_checkpoints.length}</strong><small>{passport.counts.open_checkpoints} 项仍打开</small></div><div><span>版本登记</span><strong>{passport.version_registry.length}</strong><small>{passport.counts.needs_review_versions} 项受上游变化影响</small></div></div>{ledger?.awaiting_answer?.length ? <ul className="passport-awaiting">{ledger.awaiting_answer.map((item) => <li key={item.checkpoint_id}><strong>{item.stage}</strong><span>{item.question}</span></li>)}</ul> : null}<p className="passport-boundary">{passport.boundaries[0]}</p></details>}
+  </section>;
+}
+
+function Schema9InteroperabilityPanel({ detail, onUpdate, onNotice }: { detail: ProjectDetail; onUpdate: (value: ProjectDetail["schema9Import"]) => void; onNotice: (value: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const report = detail.schema9Import;
+  const importFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    setBusy(true);
+    try { const result = await api.importSchema9Passport(detail.project.id, file.name, await file.text()); onUpdate(result.report); onNotice(result.report.status === "invalid" ? "Schema 9 导入已隔离保存，但未通过兼容检查。" : "Schema 9 原文已隔离保存，并完成当前兼容范围检查。 "); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  const label = report?.status === "validated_subset" ? "已通过当前验证子集" : report?.status === "core_compatible" ? "核心兼容 · 扩展未全验" : report ? "不兼容" : "尚未导入";
+  return <section className="schema9-panel"><div className="schema9-copy"><span className="eyebrow">UPSTREAM INTEROPERABILITY · SCHEMA 9</span><h2>上游 Passport 兼容层</h2><p>导入文件会原文隔离保存；核心字段、repro_lock 与已支持的子合约分别检查。这里不会把工作台投影改名成上游 Passport，也不提供“论文正确”认证。</p></div><div className={`schema9-status ${report?.status || "empty"}`}><strong>{label}</strong>{report?.content_sha256 && <code>{report.content_sha256.slice(0, 16)}…</code>}<small>{report?.scope || "当前仅接受 JSON；YAML 与更多扩展合约将在后续里程碑补齐。"}</small></div><div className="schema9-actions"><label className={`button secondary file-button ${busy ? "is-disabled" : ""}`}>{busy ? <LoaderCircle className="spin"/> : <Upload/>}{busy ? "正在验证" : "导入 Schema 9 JSON"}<input type="file" accept=".json,application/json" disabled={busy} onChange={importFile}/></label>{report?.imported_relative_path && <button className="button secondary" onClick={() => api.downloadSchema9Passport(detail.project.id, report.file_name).catch((error) => onNotice(error.message))}><Download/>原样导出</button>}</div>{report && (report.errors.length > 0 || report.warnings.length > 0) && <details className="schema9-diagnostics"><summary>查看兼容诊断（{report.errors.length} 错误 · {report.warnings.length} 提示）</summary>{report.errors.length > 0 && <ul className="diagnostic-errors">{report.errors.map((item, index) => <li key={`error-${index}`}>{item}</li>)}</ul>}{report.warnings.length > 0 && <ul>{report.warnings.map((item, index) => <li key={`warning-${index}`}>{item}</li>)}</ul>}</details>}</section>;
+}
+
+function IntegrityReportPanel({ detail, stage }: { detail: ProjectDetail; stage: "2.5" | "4.5" }) {
+  const skill = stage === "2.5" ? "ars-integrity" : "ars-finalize";
+  const runs = detail.runs.filter((run) => run.skillName === skill);
+  const activeVersion = detail.versions.find((version) => version.skillName === skill && version.status === "active");
+  const unresolved = detail.evidenceClaims.filter((claim) => claim.verificationStatus !== "verified").length;
+  return <section className="integrity-report-panel"><div className="integrity-report-head"><div><span className="eyebrow">STAGE {stage} · MANDATORY INTEGRITY</span><h2>{stage === "2.5" ? "预评审核验报告" : "最终完整性报告"}</h2><p>这里只汇总真实运行与作者采用状态；运行完成不自动等于 PASS，未生成结构化上游报告时明确保持未知。</p></div><div className={`integrity-verdict ${activeVersion && unresolved === 0 ? "candidate" : "unknown"}`}><span>工作台判定</span><strong>{activeVersion && unresolved === 0 ? "待作者确认的候选" : "未确认 / 未闭合"}</strong><small>不得替代上游 gate verdict</small></div></div><div className="integrity-metrics"><div><span>核验运行</span><strong>{runs.length}</strong></div><div><span>已采用版本</span><strong>{activeVersion ? 1 : 0}</strong></div><div><span>未闭合声明</span><strong>{unresolved}</strong></div></div>{runs.length ? <div className="integrity-run-list">{runs.map((run) => <details key={run.id}><summary><span>{relativeDate(run.startedAt)} · {statusText(run.status)}</span><strong>{run.reviewStatus === "adopted" ? "作者已采用" : run.reviewStatus === "rejected" ? "作者已拒绝" : run.reviewStatus === "revision_requested" ? "已要求修改" : "待作者审阅"}</strong></summary><p>{run.output?.trim() ? run.output.slice(0, 1200) : run.error || "本次运行尚无输出。"}</p></details>)}</div> : <div className="integrity-empty"><ShieldCheck/><div><strong>尚未运行 Stage {stage}</strong><p>启动对应 ARS 环节后，运行收据、作者采用与版本会在这里集中显示。</p></div></div>}</section>;
+}
+
+function VerificationToolsPanel({ detail, onUpdate, onNotice }: { detail: ProjectDetail; onUpdate: (value: NonNullable<ProjectDetail["verification"]>) => void; onNotice: (value: string) => void }) {
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null);
+  const [citationBusy, setCitationBusy] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [authorizationText, setAuthorizationText] = useState("");
+  const [revalidateStale, setRevalidateStale] = useState(false);
+  const verification = detail.verification;
+  const pdfSources = detail.sources.filter((source) => source.relativePath?.toLowerCase().endsWith(".pdf"));
+  const imported = detail.schema9Import && detail.schema9Import.status !== "invalid";
+  const exactAuthorization = authorizationText.trim() === verification?.authorizationText;
+  const runPdf = async (sourceId: string) => {
+    setPdfBusy(sourceId);
+    try { const result = await api.runPdfPreflight(detail.project.id, sourceId); onUpdate(result.status); onNotice(`PDF 页码锚点预检完成：${result.preflight.verdict}`); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setPdfBusy(null); }
+  };
+  const runCitations = async () => {
+    if (!verification) return;
+    setCitationBusy(true);
+    try { const result = await api.runCitationVerification(detail.project.id, { authorized: acknowledged, authorizationText: authorizationText.trim(), revalidateStale }); onUpdate(result.status); setAuthorizationText(""); setAcknowledged(false); onNotice(`程序化书目核验完成：${result.report.outcome_count || 0} 条诊断结果。`); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setCitationBusy(false); }
+  };
+  return <section className="verification-tools-panel">
+    <div className="verification-tools-head"><div><span className="eyebrow">LOCAL PREFLIGHT · EXPLICIT AUTHORIZATION</span><h2>科研核验工具</h2><p>PDF 预检只判断页码锚点是否具备结构条件；书目服务只在本次明确授权后运行。两者都不等于论文正确，也不会自动生成 Stage 2.5 / 4.5 PASS。</p></div><div className="verification-cache"><Database/><div><span>本地核验缓存</span><strong>{verification?.cache.citations || 0} 条书目 · {verification?.cache.rows || 0} 条记录</strong><small>{verification?.cache.path || "尚未初始化"} · {verification?.cache.staleAdvisoryDays || 30} 天提示 / {verification?.cache.ttlDays || 90} 天 TTL</small></div></div></div>
+    <div className="verification-grid">
+      <article className="pdf-preflight-card"><div className="verification-card-title"><FileText/><div><span>PDF PAGE-ANCHOR PREFLIGHT</span><h3>页码锚点结构预检</h3></div></div><p>PASS 仅允许后续创建页码定位；FAIL 拒绝把该 PDF 当作可靠页码锚点；UNAVAILABLE 保持未知。</p>{pdfSources.length ? <div className="pdf-preflight-list">{pdfSources.map((source) => { const result = verification?.pdfPreflights.find((item) => item.sourceId === source.id); return <div key={source.id}><div><strong>{source.title || source.name}</strong><small>{result ? `${result.verdict} · ${relativeDate(result.checkedAt)}${result.reason ? ` · ${result.reason}` : ""}` : "尚未预检"}</small></div><button className="button secondary" disabled={Boolean(pdfBusy)} onClick={() => runPdf(source.id)}>{pdfBusy === source.id ? <LoaderCircle className="spin"/> : <ShieldCheck/>}{result ? "重新预检" : "开始预检"}</button></div>; })}</div> : <div className="verification-empty">项目中尚无已登记 PDF 原件。</div>}</article>
+      <article className="citation-verification-card"><div className="verification-card-title"><Link2/><div><span>PROGRAMMATIC CITATION DIAGNOSTIC</span><h3>程序化书目核验</h3></div></div><p>默认读取本地缓存；运行时会把导入 Passport 的书目元数据发送给 Crossref、OpenAlex、Semantic Scholar 和 arXiv。当前以 <code>citation_key</code> 合成 ref_slug，仅作诊断，不能冒充真实正文引用连接。</p><label className="authorization-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)}/><span>我理解本次操作会向上述外部服务发送书目元数据。</span></label><label className="authorization-words">逐字输入本次授权文本<textarea rows={3} value={authorizationText} onChange={(event) => setAuthorizationText(event.target.value)} placeholder={verification?.authorizationText || "请先刷新项目状态"}/></label><label className="authorization-check"><input type="checkbox" checked={revalidateStale} onChange={(event) => setRevalidateStale(event.target.checked)}/><span>同时重新核验已超过提示期的缓存项（可能增加外部请求）</span></label><button className="button primary" disabled={citationBusy || !imported || !acknowledged || !exactAuthorization} onClick={runCitations}>{citationBusy ? <LoaderCircle className="spin"/> : <ExternalLink/>}{citationBusy ? "正在核验" : "本次授权并运行"}</button>{!imported && <small className="verification-blocker">请先导入通过核心兼容检查、且包含 literature_corpus 的 Schema 9 Passport。</small>}{verification?.latestProgrammatic && <div className={`latest-verification ${verification.latestProgrammatic.status}`}><strong>最近结果：{verification.latestProgrammatic.status}</strong><span>{verification.latestProgrammatic.outcome_count || 0} 条 · {verification.latestProgrammatic.generated_at ? relativeDate(verification.latestProgrammatic.generated_at) : "时间未知"}</span><small>{verification.latestProgrammatic.boundary || verification.latestProgrammatic.stderr || "诊断结果已保存在项目目录。"}</small></div>}</article>
+    </div>
+  </section>;
+}
+
+function RevisionItemEditor({ projectId, item, decision, onSaved, onNotice }: { projectId: string; item: NonNullable<NonNullable<ProjectDetail["revisionWorkspace"]>["roadmap"]>["items"][number]; decision?: NonNullable<ProjectDetail["revisionWorkspace"]>["decisions"][number]; onSaved: (value: NonNullable<ProjectDetail["revisionWorkspace"]>) => void; onNotice: (value: string) => void }) {
+  const [triage, setTriage] = useState<"will_address" | "wont_address" | "not_on_point">(decision?.authorTriage || "will_address");
+  const [reason, setReason] = useState(decision?.authorReason || "");
+  const [authorWords, setAuthorWords] = useState("");
+  const [selected, setSelected] = useState<Record<string, string[]>>(() => Object.fromEntries((decision?.authorizedTargets || []).map((target) => [target.block_id, target.allowed_operations])));
+  const [busy, setBusy] = useState(false);
+  const toggle = (block: string, operation: string, checked: boolean) => setSelected((current) => ({ ...current, [block]: checked ? [...new Set([...(current[block] || []), operation])] : (current[block] || []).filter((item) => item !== operation) }));
+  const save = async () => {
+    setBusy(true);
+    try { const authorizedTargets = triage === "will_address" ? Object.entries(selected).filter(([, operations]) => operations.length).map(([blockId, allowedOperations]) => ({ blockId, allowedOperations })) : []; const result = await api.saveRevisionDecision(projectId, item.id, { authorTriage: triage, authorReason: reason, authorWords, authorizedTargets }); onSaved(result.workspace); setAuthorWords(""); onNotice(`已记录 ${item.id} 的作者裁决与原话哈希。`); }
+    catch (error) { onNotice((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <article className="revision-item"><div className="revision-item-head"><div><span className={`obligation ${item.obligationClass}`}>{item.obligationClass}</span><code>{item.id}</code></div>{decision && <span className="decision-saved"><Check/>已留痕</span>}</div><h3>{item.description}</h3><dl><div><dt>来源</dt><dd>{item.reviewer}</dd></div><div><dt>目标章节</dt><dd>{item.targetSection}</dd></div><div><dt>建议动作</dt><dd>{item.suggestedAction}</dd></div><div><dt>验收标准</dt><dd>{item.verificationCriteria}</dd></div></dl><div className="revision-decision-grid"><label>作者决定<select value={triage} onChange={(event) => setTriage(event.target.value as typeof triage)}><option value="will_address">will_address · 处理</option><option value="wont_address">wont_address · 不处理</option><option value="not_on_point">not_on_point · 不相关</option></select></label><label>作者理由<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={triage === "will_address" ? "处理时可选" : "拒绝或不相关时必填"}/></label></div>{triage === "will_address" && <fieldset className="revision-targets"><legend>明确授权的修改目标</legend>{item.proposedTargets.map((target) => <div key={target.block_id}><strong>{target.block_id}</strong>{target.allowed_operations.map((operation) => <label key={operation}><input type="checkbox" checked={(selected[target.block_id] || []).includes(operation)} onChange={(event) => toggle(target.block_id, operation, event.target.checked)}/>{operation}</label>)}</div>)}</fieldset>}<label className="author-words">本次裁决的作者原话<textarea value={authorWords} onChange={(event) => setAuthorWords(event.target.value)} rows={2} placeholder="请写下你对这一项的明确决定；系统只记录并计算哈希，不代写。"/></label><button className="button secondary" disabled={busy || !authorWords.trim()} onClick={save}>{busy ? <LoaderCircle className="spin"/> : <Save/>}保存作者裁决</button></article>;
+}
+
+function RevisionAdjudicationPanel({ detail, onUpdate, onNotice }: { detail: ProjectDetail; onUpdate: (value: NonNullable<ProjectDetail["revisionWorkspace"]>) => void; onNotice: (value: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [finalWords, setFinalWords] = useState("");
+  const workspace = detail.revisionWorkspace;
+  const importRoadmap = async (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setBusy(true); try { const result = await api.importRevisionRoadmap(detail.project.id, await file.text()); onUpdate(result.workspace); onNotice("revision-roadmap/1.0 已导入；旧裁决草稿已清空，等待作者逐项决定。 "); } catch (error) { onNotice((error as Error).message); } finally { setBusy(false); } };
+  const finalize = async () => { setBusy(true); try { const result = await api.finalizeRevisionInput(detail.project.id, finalWords); onUpdate(result.workspace); setFinalWords(""); onNotice("已生成 author-adjudication-input/1.0；它仍需上游 builder 绑定材料后才能成为正式 sidecar。 "); } catch (error) { onNotice((error as Error).message); } finally { setBusy(false); } };
+  return <section className="revision-panel"><div className="revision-panel-head"><div><span className="eyebrow">REVISION ROADMAP · AUTHOR AUTHORITY</span><h2>返修路线与作者裁决</h2><p>返修路线保持 reviewer 原始顺序，不按严重度打分排序。系统只执行作者明确选择的 `will_address` 目标。</p></div><label className={`button secondary file-button ${busy ? "is-disabled" : ""}`}><Upload/>{workspace?.roadmap ? "重新导入路线" : "导入 revision-roadmap/1.0"}<input type="file" accept=".json,application/json" disabled={busy} onChange={importRoadmap}/></label></div>{workspace?.roadmap ? <><div className="revision-summary"><div><span>轮次</span><strong>{workspace.roadmap.revisionRound}</strong></div><div><span>路线项目</span><strong>{workspace.roadmap.totalItems}</strong></div><div><span>已裁决</span><strong>{workspace.decisions.length}</strong></div><div><span>决定</span><strong>{workspace.roadmap.editorialDecision}</strong></div></div><p className="revision-boundary"><ShieldCheck/>{workspace.boundary}</p><div className="revision-list">{workspace.roadmap.items.map((item) => <RevisionItemEditor key={item.id} projectId={detail.project.id} item={item} decision={workspace.decisions.find((decision) => decision.itemId === item.id)} onSaved={onUpdate} onNotice={onNotice}/>)}</div><div className="revision-finalize"><label>最终确认的作者原话<textarea rows={2} value={finalWords} onChange={(event) => setFinalWords(event.target.value)} placeholder="例如：我确认以上逐项裁决，并按审稿来源顺序导出。"/></label><button className="button primary" disabled={!workspace.complete || !finalWords.trim() || busy} onClick={finalize}>{busy ? <LoaderCircle className="spin"/> : <PackageCheck/>}生成上游 builder 输入</button>{workspace.exportReady && <button className="button secondary" onClick={() => api.downloadRevisionInput(detail.project.id).catch((error) => onNotice(error.message))}><Download/>下载裁决输入</button>}</div></> : <div className="revision-empty"><FileText/><div><strong>尚未导入返修路线</strong><p>请导入真实的 `revision-roadmap/1.0` JSON。工作台不会从审稿文本自动猜测作者决定。</p></div></div>}</section>;
+}
+
 export default function App() {
-  const [theme, setTheme] = useState(localStorage.getItem("research-theme") || "light");
   const [view, setView] = useState<View>("overview");
   const [feedbackOrigin, setFeedbackOrigin] = useState<View>("overview");
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
@@ -520,14 +650,16 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [contactVisible, setContactVisible] = useState(!cloudMode);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [url, setUrl] = useState("");
   const [instructionsByView, setInstructionsByView] = useState<Partial<Record<View, string>>>({});
-  const [lifecycleSkills, setLifecycleSkills] = useState({ writing: "intro-drafter", production: "paper-polish", review: "pre-submission-reviewer" });
+  const [lifecycleSkills, setLifecycleSkills] = useState({ writing: "ars-review", production: "ars-revise", review: "ars-finalize" });
   const [exportFiles, setExportFiles] = useState<ExportFile[]>([]);
   const [exportPreview, setExportPreview] = useState<ExportPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState("");
+  const [passportBusy, setPassportBusy] = useState(false);
   const [sourceUploads, setSourceUploads] = useState<SourceUploadItem[]>([]);
   const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
   const [idea, setIdea] = useState<IdeaEvaluationInput>({ idea: "", weeklyHours: 8, timelineMonths: 6, skills: "", resources: "", targetVenue: "" });
@@ -537,31 +669,46 @@ export default function App() {
   const isAdmin = sessionInfo?.role === "admin";
   const canViewSkillsCatalog = !cloudMode || isAdmin;
   const relevantRuns = detail?.runs.filter((run) => {
-    if (view === "idea") return run.skillName === "idea-evaluator";
-    if (view === "workflow") return run.skillName === "vibe-research-workflow";
-    if (view === "research") return run.skillName === "deep-research";
-    if (view === "blueprint") return ["tech-paper-template", "benchmark-paper-template"].includes(run.skillName);
-    if (view === "writing") return ["intro-drafter", "paper-writer"].includes(run.skillName);
-    if (view === "production") return ["paper-polish", "figure-designer", "drawio-reconstruction"].includes(run.skillName);
-    if (view === "review") return ["pre-submission-reviewer", "rebuttal-guidance"].includes(run.skillName);
+    if (view === "workflow") return ["ars-scope", "vibe-research-workflow"].includes(run.skillName);
+    if (view === "idea") return ["ars-research", "idea-evaluator"].includes(run.skillName);
+    if (view === "research") return ["ars-write", "deep-research"].includes(run.skillName);
+    if (view === "blueprint") return ["ars-integrity", "tech-paper-template", "benchmark-paper-template"].includes(run.skillName);
+    if (view === "writing") return ["ars-review", "intro-drafter", "paper-writer"].includes(run.skillName);
+    if (view === "production") return ["ars-revise", "paper-polish", "figure-designer", "drawio-reconstruction"].includes(run.skillName);
+    if (view === "review") return ["ars-finalize", "pre-submission-reviewer", "rebuttal-guidance"].includes(run.skillName);
     return false;
   }) || [];
   const activeRun = relevantRuns.find((run) => run.id === focusedRunId) || relevantRuns[0] || null;
   const projectHasActiveRun = detail?.runs.some((run) => ["queued", "running", "waiting_approval"].includes(run.status)) || false;
+
+  useEffect(() => { document.documentElement.dataset.theme = "dark"; }, []);
 
   const loadProjects = async () => {
     const result = await api.projects(); setProjects(result.projects);
     setSelectedId((current) => current || result.projects[0]?.id || null);
   };
   const loadDetail = async (id = selectedId) => { if (id) setDetail(await api.project(id)); };
+  const refreshPassport = async () => {
+    if (!selectedId || passportBusy) return;
+    setPassportBusy(true);
+    try {
+      const result = await api.syncPassport(selectedId);
+      setDetail((current) => current ? { ...current, passport: result.passport } : current);
+      setNotice("Material Passport 与 ARS run ledger 状态已同步。");
+    } catch (error) { setNotice((error as Error).message); }
+    finally { setPassportBusy(false); }
+  };
   const loadExports = async (id = selectedId) => {
     if (!id) return [];
     const result = await api.exports(id);
     setExportFiles(result.files);
     return result.files;
   };
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("research-theme", theme); }, [theme]);
-  useEffect(() => { if (cloudMode) api.session().then((result) => setSessionInfo(result.user)).catch(() => setSessionInfo(null)); }, []);
+  useEffect(() => { api.session().then((result) => setSessionInfo(result.user)).catch(() => setSessionInfo(null)); }, []);
+  useEffect(() => {
+    if (!cloudMode) { setContactVisible(true); return; }
+    api.publicSettings().then((settings) => setContactVisible(settings.contactBloggerEnabled)).catch(() => setContactVisible(true));
+  }, []);
   useEffect(() => {
     if (!cloudMode || !sessionInfo) return;
     let cancelled = false;
@@ -700,6 +847,15 @@ export default function App() {
     catch (e) { setNotice((e as Error).message); }
     finally { setBusy(""); }
   };
+  const setContactBloggerVisibility = async (enabled: boolean) => {
+    setBusy("contact-setting");
+    try {
+      const result = await api.adminSetContactBloggerEnabled(enabled);
+      setContactVisible(result.contactBloggerEnabled);
+      setNotice(result.contactBloggerEnabled ? "“联系博主”已开放，登录页和用户侧边栏将显示入口。" : "“联系博主”已关闭，登录页和用户侧边栏将隐藏入口。");
+    } catch (e) { setNotice((e as Error).message); }
+    finally { setBusy(""); }
+  };
   const clearResearchData = async () => {
     setBusy("clear-data");
     try {
@@ -720,6 +876,11 @@ export default function App() {
     } catch (e) {
       throw e;
     } finally { setBusy(""); }
+  };
+  const signOut = async () => {
+    if (cloudMode) await supabase?.auth.signOut();
+    else await api.localLogout();
+    window.location.reload();
   };
   const reviewRunById = async (runId: string, decision: ReviewDecision, note: string) => {
     setBusy(decision === "adopt" ? `review-adopt-${runId}` : `review-${decision}`);
@@ -818,7 +979,11 @@ export default function App() {
         <div className="system-account-copy"><span className="eyebrow">CURRENT ACCOUNT</span><h2>{sessionInfo?.username || "当前账号"}</h2><p>{isAdmin ? "管理员账号，可管理用户与系统数据。" : "普通试用账号，数据与其他账号隔离。"}</p></div>
         <dl><div><dt>账号角色</dt><dd>{isAdmin ? "管理员" : "普通用户"}</dd></div><div><dt>账号状态</dt><dd>正常</dd></div></dl>
         <AccountPasswordSettings onNotice={setNotice}/>
-        <button className="button secondary system-signout" onClick={() => void supabase?.auth.signOut()}><LogOut/>退出登录</button>
+        <button className="button secondary system-signout" onClick={() => void signOut()}><LogOut/>退出登录</button>
+      </section>}
+      {cloudMode && isAdmin && <section className="system-settings-block">
+        <div className="system-settings-block-head"><div><span className="eyebrow">PUBLIC ENTRY CONTROL</span><h2>联系博主入口</h2><p>统一控制登录页和所有用户工作台侧边栏是否显示“联系博主”。</p></div></div>
+        <div className="feature-toggle-card"><div className="feature-toggle-icon"><MessageSquare/></div><div><strong>公开联系入口</strong><p>{contactVisible ? "当前已开放，访客和登录用户可以查看联系方式与平台二维码。" : "当前已关闭，登录页和工作台侧边栏均不显示入口。"}</p></div><button type="button" role="switch" aria-checked={contactVisible} className={`feature-switch ${contactVisible ? "is-on" : ""}`} disabled={busy === "contact-setting"} onClick={() => void setContactBloggerVisibility(!contactVisible)}><span/>{busy === "contact-setting" ? "保存中" : contactVisible ? "已开启" : "已关闭"}</button></div>
       </section>}
       <section className="system-settings-block">
         <div className="system-settings-block-head"><div><span className="eyebrow">SYSTEM READINESS</span><h2>运行状态与数据安全</h2><p>检查工作台、科研 Skills、用户资料和运行记录。</p></div></div>
@@ -842,50 +1007,59 @@ export default function App() {
         onConfirm={clearResearchData}
       />}
     </section>;
-    if (!selected) return <Empty title="从第一个课题开始" body="创建课题后，工作台会把资料、AI 草稿、人工确认和正式成果分层保存。" action={<button className="button primary" onClick={() => setCreateOpen(true)}><Plus/>创建课题</button>}/>;
+    if (!selected) return <CosmicEmptyDashboard onCreate={() => setCreateOpen(true)}/>;
     if (view === "overview") {
       const next = !projectStats.sources
         ? { number: "01", title: "先补充可信资料", body: "上传已有文献、课题说明或登记网页来源，先建立证据边界。", view: "sources" as View }
         : selected.stage === "brief"
-          ? { number: "02", title: "开始 Idea 可行性评估", body: "让 Skill 根据时间、资源与研究缺口给出决策建议。", view: "idea" as View }
+          ? { number: "02", title: "收敛研究范围", body: "用苏格拉底式澄清确认研究问题、边界、约束与成功标准。", view: "workflow" as View }
+          : selected.stage === "idea"
+            ? { number: "03", title: "进入深度调研", body: "围绕已确认问题组织检索、核验、证据综合、争议与研究缺口。", view: "idea" as View }
           : selected.stage === "research"
-            ? { number: "03", title: "进入深度文献调研", body: "围绕已采用的研究判断组织检索、证据、冲突和研究缺口。", view: "research" as View }
+            ? { number: "04", title: "进入论文写作", body: "从计划、提纲到章节草稿逐步推进，不用推测补齐缺失事实。", view: "research" as View }
           : selected.stage === "blueprint"
-            ? { number: "04", title: "完善论文蓝图", body: "把已确认的证据和研究贡献转成可执行的论文结构。", view: "blueprint" as View }
+            ? { number: "05", title: "执行完整性核验Ⅰ", body: "在评审前检查声明—引用对齐、来源存在性和证据边界。", view: "blueprint" as View }
             : selected.stage === "writing"
-              ? { number: "05", title: "进入章节级写作", body: "以已采用蓝图为边界，逐章生成、审阅并采用正式版本。", view: "writing" as View }
+              ? { number: "06", title: "启动同行评审", body: "按作者确认的审查目标形成分级意见与编辑决定信。", view: "writing" as View }
               : selected.stage === "production"
-                ? { number: "06", title: "完成图表与整稿", body: "核对语义变化、真实数据、图表标注和整稿装配关系。", view: "production" as View }
+                ? { number: "07", title: "完成返修与复审", body: "只处理作者明确采纳的返修项，并保留逐条裁决与证据。", view: "production" as View }
                 : selected.stage === "review"
-                  ? { number: "07", title: "执行投稿前审查", body: "分级处理论证、实验、引用、格式和可复现性问题。", view: "review" as View }
+                  ? { number: "08", title: "完成 Passport 与最终核验", body: "闭合材料边界，执行 Stage 4.5 后再形成定稿候选。", view: "review" as View }
                   : { number: "08", title: "导出正式研究成果", body: "只使用已经人工采用的正式版本生成可审查文件。", view: "export" as View };
       return <>
-      <section className="hero"><div><span className="eyebrow">RESEARCH EVIDENCE SPINE</span><h1>{selected.name}</h1><p>{selected.goal}</p></div><div className="hero-actions"><button className="button secondary" onClick={() => setProjectSettingsOpen(true)}><Settings/>编辑课题</button>{cloudMode ? <span className="cloud-hero-badge"><ShieldCheck/>账号专属空间</span> : <button className="button secondary" onClick={() => api.openCodex(selected.id).catch((e) => setNotice(e.message))}><ExternalLink/>在本地客户端打开</button>}</div></section>
+      <section className="hero ars-hero"><div><span className="eyebrow">ACADEMIC RESEARCH SUITE · CODEX WORKBENCH</span><h1>{selected.name}</h1><div className="ars-hero-rule"><i/><i/><i/></div></div><div className="hero-actions"><button className="button secondary" onClick={() => setProjectSettingsOpen(true)}><Settings/>编辑课题</button>{cloudMode ? <span className="cloud-hero-badge"><ShieldCheck/>账号专属空间</span> : <button className="button secondary" onClick={() => api.openCodex(selected.id).catch((e) => setNotice(e.message))}><ExternalLink/>在本地客户端打开</button>}</div></section>
       <StageSpine project={selected}/>
       {detail && <ReadinessPanel detail={detail} onGo={setView}/>} 
-      <div className="metric-row"><div><span>原始资料</span><strong>{projectStats.sources}</strong><small>文件与网址</small></div><div><span>Skill 运行</span><strong>{projectStats.runs}</strong><small>全部留痕</small></div><div><span>人工待办</span><strong>{projectStats.approvals}</strong><small>{projectStats.reviews ? `${projectStats.reviews} 个草稿待审阅` : "审批与内容审阅"}</small></div></div>
-      <div className="content-grid"><section className="paper-card"><div className="section-title"><div><span className="eyebrow">NEXT GATE</span><h2>下一步建议</h2></div><ChevronRight/></div><div className="next-step"><div className="step-number">{next.number}</div><div><h3>{next.title}</h3><p>{next.body}</p><button className="text-link" onClick={() => setView(next.view)}>进入此环节 <ArrowRight/></button></div></div></section><section className="paper-card compact"><span className="eyebrow">{cloudMode ? "PERSONAL WORKSPACE" : "LOCAL FIRST"}</span><h2>项目证据目录</h2><code>{selected.projectPath}</code><p>原始资料只读，AI 输出先进入草稿层。正式版本由你确认。</p></section></div>
+      <div className="metric-row"><div><span>原始资料</span><strong>{projectStats.sources}</strong><small>文件与网址</small></div><div><span>ARS 运行</span><strong>{projectStats.runs}</strong><small>阶段与版本全部留痕</small></div><div><span>人工待办</span><strong>{projectStats.approvals}</strong><small>{projectStats.reviews ? `${projectStats.reviews} 个草稿待审阅` : "检查点与作者裁决"}</small></div></div>
+      {detail && <><MaterialPassportPanel detail={detail} refreshing={passportBusy} onRefresh={cloudMode ? undefined : refreshPassport}/>{!cloudMode && <Schema9InteroperabilityPanel detail={detail} onUpdate={(schema9Import) => setDetail((current) => current ? { ...current, schema9Import } : current)} onNotice={setNotice}/>}</>}
+      <div className="content-grid"><section className="paper-card"><div className="section-title"><div><span className="eyebrow">NEXT MANDATORY GATE</span><h2>下一步建议</h2></div><ChevronRight/></div><div className="next-step"><div className="step-number">{next.number}</div><div><h3>{next.title}</h3><p>{next.body}</p><button className="text-link" onClick={() => setView(next.view)}>进入此环节 <ArrowRight/></button></div></div></section><section className="paper-card compact"><span className="eyebrow">{cloudMode ? "PERSONAL WORKSPACE" : "LOCAL FIRST"}</span><h2>项目证据目录</h2><code>{selected.projectPath}</code><p>原始资料只读，AI 输出先进入草稿层；只有作者采用后才形成正式阶段版本。</p></section></div>
     </>;
     }
     if (view === "sources") return <SourceWorkspace project={selected} detail={detail} busy={busy} uploadItems={sourceUploads} url={url} setUrl={setUrl} onUpload={upload} onRetryUpload={retryUpload} onAddUrl={addUrl} onReload={() => loadDetail().then(() => undefined)} onNotice={setNotice}/>;
-     if (view === "workflow") return <section className="workspace-section"><div className="page-heading"><div><span className="eyebrow">RESEARCH ROUTING</span><h1>研究路线</h1><p>判断课题当前所处阶段，把模糊目标拆成可执行路线，并明确工具选择和研究红线。</p></div></div><CodexRunWorkspace title="研究工作流" eyebrow="RESEARCH ROUTING" description="先把当前进度、障碍和可用证据说清楚，再生成可执行的研究路线。" sidebar={<><span className="codex-rail-section-title">任务提示</span><TaskHint skill="vibe-research-workflow" value={instructions} onFill={setInstructions}/><p className="codex-rail-note">路线建议只形成草稿；是否推进研究阶段仍由你确认。</p></>} promptValue={instructions} onPromptChange={setInstructions} onSubmit={(message) => runAction("vibe-research-workflow", message)} submitLabel="运行研究工作流" submitIcon={busy === "vibe-research-workflow" ? <LoaderCircle className="spin" size={17}/> : <FolderKanban size={17}/>} disabled={busy === "vibe-research-workflow" || projectHasActiveRun} runs={relevantRuns} activeRunId={activeRun?.id || null} onSelectRun={setFocusedRunId} run={activeRun} approvals={detail?.approvals || []} busy={busy} onReview={reviewRun} onRetry={retryRun} onCancel={cancelRun} onResolve={resolve}/><StageHistory stage="brief" runs={relevantRuns} versions={detail?.versions || []} activeRunId={activeRun?.id || null} busy={busy} onSelect={setFocusedRunId} onAdopt={adoptRun} onDelete={deleteRun}/></section>;
-     if (view === "idea") return <section className="workspace-section"><div className="page-heading"><div><span className="eyebrow">DECISION BEFORE EXECUTION</span><h1>Idea 可行性评估</h1><p>先判断值不值得做，再投入完整调研和写作。</p></div></div><CodexRunWorkspace title="Idea 可行性评估" eyebrow="DECISION BEFORE EXECUTION" description="把研究问题、投入约束和资源条件放进同一个对话，再决定是否继续投入。" sidebar={<div className="codex-rail-form"><span className="codex-rail-section-title">评估参数</span><TaskHint skill="idea-evaluator" value={idea.idea} onFill={(value) => setIdea({ ...idea, idea: value })}/><label>每周投入 小时<input type="number" min="1" value={idea.weeklyHours} onChange={(e) => setIdea({ ...idea, weeklyHours: Number(e.target.value) })}/></label><label>计划周期 月<input type="number" min="1" value={idea.timelineMonths} onChange={(e) => setIdea({ ...idea, timelineMonths: Number(e.target.value) })}/></label><label>已有技能<input value={idea.skills} onChange={(e) => setIdea({ ...idea, skills: e.target.value })} placeholder="研究方法、编程、实验能力"/></label><label>已有资源<input value={idea.resources} onChange={(e) => setIdea({ ...idea, resources: e.target.value })} placeholder="数据、设备、合作导师、经费"/></label><label>目标期刊或会议<input value={idea.targetVenue} onChange={(e) => setIdea({ ...idea, targetVenue: e.target.value })} placeholder="不确定可留空"/></label></div>} promptValue={idea.idea} onPromptChange={(value) => setIdea({ ...idea, idea: value })} onSubmit={(message) => runAction("idea-evaluator", { ...idea, idea: message })} submitLabel="开始评估" submitIcon={busy === "idea-evaluator" ? <LoaderCircle className="spin" size={17}/> : <BrainCircuit size={17}/>} disabled={busy === "idea-evaluator" || projectHasActiveRun} runs={relevantRuns} activeRunId={activeRun?.id || null} onSelectRun={setFocusedRunId} run={activeRun} approvals={detail?.approvals || []} busy={busy} onReview={reviewRun} onRetry={retryRun} onCancel={cancelRun} onResolve={resolve}/><StageHistory stage="idea" runs={relevantRuns} versions={detail?.versions || []} activeRunId={activeRun?.id || null} busy={busy} onSelect={setFocusedRunId} onAdopt={adoptRun} onDelete={deleteRun}/></section>;
-    if (view === "research" || view === "blueprint") {
-      const skill = view === "research" ? "deep-research" : selected.paperType === "benchmark" ? "benchmark-paper-template" : "tech-paper-template";
-      return <section className="workspace-section"><div className="page-heading"><div><span className="eyebrow">{view === "research" ? "EVIDENCE SYNTHESIS" : "PAPER ARCHITECTURE"}</span><h1>{view === "research" ? "深度文献调研" : "论文蓝图"}</h1><p>{view === "research" ? "围绕已确认问题组织检索、证据、冲突和研究缺口。" : "把已采用的 Idea 与调研结果转成可执行的论文结构。"}</p></div></div><CodexRunWorkspace title={view === "research" ? "深度文献调研" : "论文蓝图"} eyebrow={view === "research" ? "EVIDENCE SYNTHESIS" : "PAPER ARCHITECTURE"} description={view === "research" ? "围绕已确认问题组织检索、证据、冲突和研究缺口。" : "把已采用的 Idea 与调研结果转成可执行的论文结构。"} sidebar={<><span className="codex-rail-section-title">当前科研 Skill</span><strong className="codex-rail-skill">{labels[skill]}</strong><TaskHint skill={skill} value={instructions} onFill={setInstructions}/><p className="codex-rail-note">{cloudMode ? "在线版只使用已登记资料与已核验证据。" : "受控操作会在运行过程中请求人工审批。"}</p></>} promptValue={instructions} promptPlaceholder={view === "research" ? "说明调研主题、文献范围、重点比较的问题，以及希望得到的对比表和待核验清单。" : "说明论文主题、章节结构、研究范围、所需实验和图表；没有实验结果时请保留待补项。"} onPromptChange={setInstructions} onSubmit={(message) => runAction(skill, message)} submitLabel={`运行${labels[skill]}`} submitIcon={busy === skill ? <LoaderCircle className="spin" size={17}/> : <FlaskConical size={17}/>} disabled={busy === skill || projectHasActiveRun} runs={relevantRuns} activeRunId={activeRun?.id || null} onSelectRun={setFocusedRunId} run={activeRun} approvals={detail?.approvals || []} busy={busy} onReview={reviewRun} onRetry={retryRun} onCancel={cancelRun} onResolve={resolve}/><StageHistory stage={view as "research" | "blueprint"} runs={relevantRuns} versions={detail?.versions || []} activeRunId={activeRun?.id || null} busy={busy} onSelect={setFocusedRunId} onAdopt={adoptRun} onDelete={deleteRun}/></section>;
-    }
-    if (["writing", "production", "review"].includes(view)) {
-      const currentView = view as "writing" | "production" | "review";
+    if (["workflow", "idea", "research", "blueprint", "writing", "production", "review"].includes(view)) {
       const config = {
-        writing: { eyebrow: "CHAPTER PRODUCTION · PHASE 2B", title: "章节级写作", body: "以已采用蓝图和核验证据为边界，逐章生成、审阅和采用。", skills: ["intro-drafter", "paper-writer"], stage: "writing" as const, placeholder: "写明目标章节、真实实验材料、目标字数、引用边界和必须保留的待补项" },
-        production: { eyebrow: "MANUSCRIPT & FIGURES · PHASE 2C", title: "图表与整稿", body: "润色、图表设计和 Draw.io 重建都先形成草稿，再由你确认语义、数据和标注。", skills: ["paper-polish", "figure-designer", "drawio-reconstruction"], stage: "production" as const, placeholder: "说明正文或参考图位置、真实数据、图意、尺寸、不可改变项和验收标准" },
-        review: { eyebrow: "SUBMISSION GATE · PHASE 2D", title: "投稿审查与回应", body: "在投稿前分级发现问题；收到评审意见后逐条规划回应，最终决定仍由作者作出。", skills: ["pre-submission-reviewer", "rebuttal-guidance"], stage: "review" as const, placeholder: "填写目标期刊/会议、格式要求、审查重点，或粘贴审稿意见与回复期限" },
-      }[currentView];
-      const skill = lifecycleSkills[currentView];
-      return <section className="workspace-section"><div className="page-heading"><div><span className="eyebrow">{config.eyebrow}</span><h1>{config.title}</h1><p>{config.body}</p></div></div><CodexRunWorkspace title={config.title} eyebrow={config.eyebrow} description={config.body} sidebar={<div className="codex-rail-form"><span className="codex-rail-section-title">选择科研 Skill</span><select value={skill} onChange={(event) => setLifecycleSkills({ ...lifecycleSkills, [currentView]: event.target.value })}>{config.skills.map((name) => <option key={name} value={name}>{labels[name]}</option>)}</select><TaskHint skill={skill} value={instructions} onFill={setInstructions}/><p className="codex-rail-note">没有真实数据时必须保留待补项；正式版本仍需人工确认。</p></div>} promptValue={instructions} promptPlaceholder={config.placeholder} onPromptChange={setInstructions} onSubmit={(message) => runAction(skill, message)} submitLabel={`运行${labels[skill]}`} submitIcon={busy === skill ? <LoaderCircle className="spin" size={17}/> : <FlaskConical size={17}/>} disabled={busy === skill || projectHasActiveRun} runs={relevantRuns} activeRunId={activeRun?.id || null} onSelectRun={setFocusedRunId} run={activeRun} approvals={detail?.approvals || []} busy={busy} onReview={reviewRun} onRetry={retryRun} onCancel={cancelRun} onResolve={resolve}/><StageHistory stage={config.stage} runs={relevantRuns} versions={detail?.versions || []} activeRunId={activeRun?.id || null} busy={busy} onSelect={setFocusedRunId} onAdopt={adoptRun} onDelete={deleteRun}/></section>;
+        workflow: { skill: "ars-scope", stage: "brief" as const, eyebrow: "STAGE 0 · SOCRATIC SCOPE", title: "范围界定", body: "把宽泛主题收敛成作者确认的研究问题、边界、约束与成功标准。", note: "问题尚未收敛时，ARS 不得替作者生成最终研究问题。" },
+        idea: { skill: "ars-research", stage: "idea" as const, eyebrow: "STAGE 1 · DEEP RESEARCH", title: "深度调研", body: "围绕已确认问题组织来源发现、核验、证据综合、争议与研究缺口。", note: "搜索结果不等于全文已读；引用和关键判断需要人工核验。" },
+        research: { skill: "ars-write", stage: "research" as const, eyebrow: "STAGE 2 · ACADEMIC PAPER", title: "论文写作", body: "从计划、提纲、章节到摘要分步推进，严格区分真实结果、计划与推论。", note: "没有真实实验结果时保留待补项，不得补写成已完成。" },
+        blueprint: { skill: "ars-integrity", stage: "blueprint" as const, eyebrow: "STAGE 2.5 · INTEGRITY GATE", title: "完整性核验Ⅰ", body: "在同行评审前核对声明—引用对齐、来源存在性、证据边界和关键缺口。", note: "默认只读；程序化引文核验和外部 API 必须单独明确授权。" },
+        writing: { skill: "ars-review", stage: "writing" as const, eyebrow: "STAGE 3 · PEER REVIEW", title: "同行评审", body: "用同一原稿和作者确认标准执行多视角审查，保留不同意见并形成编辑决定。", note: "审查默认只读；独立 reviewer 不得仅凭不同标题虚构。" },
+        production: { skill: "ars-revise", stage: "production" as const, eyebrow: "STAGE 4 · REVISION LOOP", title: "返修与复审", body: "把审稿意见转成作者可裁决的路线，只修改明确选择 will_address 的项目。", note: "系统不得替作者推断、排序或自动应用返修决定。" },
+        review: { skill: "ars-finalize", stage: "review" as const, eyebrow: "STAGE 4.5 · FINAL INTEGRITY", title: "Passport 与最终定稿", body: "闭合跨阶段材料边界，复核声明强度、引用、版本变化并形成定稿候选。", note: "阻断项未关闭时不得标记为正式定稿；最终提交仍由作者完成。" },
+      }[view as "workflow" | "idea" | "research" | "blueprint" | "writing" | "production" | "review"];
+      const skill = config.skill;
+      return <section className="workspace-section">
+        <div className="page-heading"><div><span className="eyebrow">{config.eyebrow}</span><h1>{config.title}</h1><p>{config.body}</p></div></div>
+        {view === "blueprint" && detail && <><IntegrityReportPanel detail={detail} stage="2.5"/>{!cloudMode && <VerificationToolsPanel detail={detail} onUpdate={(verification) => setDetail((current) => current ? { ...current, verification } : current)} onNotice={setNotice}/>}</>}
+        {view === "production" && detail && !cloudMode && (
+          <RevisionAdjudicationPanel detail={detail} onUpdate={(revisionWorkspace) => setDetail((current) => current ? { ...current, revisionWorkspace } : current)} onNotice={setNotice}/>
+        )}
+        {view === "review" && detail && <><IntegrityReportPanel detail={detail} stage="4.5"/>{!cloudMode && <VerificationToolsPanel detail={detail} onUpdate={(verification) => setDetail((current) => current ? { ...current, verification } : current)} onNotice={setNotice}/>}<MaterialPassportPanel detail={detail} refreshing={passportBusy} onRefresh={cloudMode ? undefined : refreshPassport}/>{!cloudMode && <Schema9InteroperabilityPanel detail={detail} onUpdate={(schema9Import) => setDetail((current) => current ? { ...current, schema9Import } : current)} onNotice={setNotice}/>}</>}
+        <CodexRunWorkspace title={config.title} eyebrow={config.eyebrow} description={config.body} sidebar={<><span className="codex-rail-section-title">当前 ARS 路由</span><strong className="codex-rail-skill">{labels[skill]}</strong><TaskHint skill={skill} value={instructions} onFill={setInstructions}/><p className="codex-rail-note">{config.note}</p></>} promptValue={instructions} onPromptChange={setInstructions} onSubmit={(message) => runAction(skill, message)} submitLabel={`运行${labels[skill]}`} submitIcon={busy === skill ? <LoaderCircle className="spin" size={17}/> : <FlaskConical size={17}/>} disabled={busy === skill || projectHasActiveRun} runs={relevantRuns} activeRunId={activeRun?.id || null} onSelectRun={setFocusedRunId} run={activeRun} approvals={detail?.approvals || []} busy={busy} onReview={reviewRun} onRetry={retryRun} onCancel={cancelRun} onResolve={resolve}/>
+        <StageHistory stage={config.stage} runs={relevantRuns} versions={detail?.versions || []} activeRunId={activeRun?.id || null} busy={busy} onSelect={setFocusedRunId} onAdopt={adoptRun} onDelete={deleteRun}/>
+      </section>;
     }
     if (view === "export") return <section className="workspace-section export-workspace">
-      <div className="page-heading"><div><span className="eyebrow">REVIEWABLE OUTPUT</span><h1>导出研究成果</h1><p>先生成需要的版本，再从下方真实文件库预览或下载。所有文件都来自当前课题的导出目录。</p></div></div>
+      <div className="page-heading"><div><span className="eyebrow">FINALIZED · TRACEABLE OUTPUT</span><h1>导出研究成果</h1><p>只装配作者已经采用的阶段版本；导出文件同时保留来源、版本和限制说明。</p></div></div>
       <div className="export-grid">{(["zh", "en"] as const).flatMap((language) => (["markdown", "docx"] as const).map((format) => {
         const key = format + language;
         return <button className="export-card" disabled={Boolean(busy)} key={language + format} onClick={() => exportProject(format, language)}><div className="export-icon">{busy === key ? <LoaderCircle className="spin"/> : format === "docx" ? <FileText/> : <ScrollText/>}</div><span>{language === "zh" ? "中文" : "English"}</span><h3>{format === "docx" ? "Word 研究方案" : "Markdown 研究方案"}</h3><p>{language === "en" ? (busy === key ? "正在逐段翻译并生成，请勿重复点击…" : "使用当前模型翻译全文，会消耗 API 额度") : format === "docx" ? "适合导师审阅和正式流转" : "适合 Obsidian 继续维护"}</p><ArrowRight/></button>;
@@ -907,11 +1081,11 @@ export default function App() {
     return <Empty title="页面暂不可用" body="请从左侧选择一个工作区。"/>;
   };
 
-  return <div className="app-shell">
-    <aside className={`sidebar ${mobileNav ? "open" : ""}`}><div className="brand"><div className="brand-mark"><FlaskConical/></div><div><strong>科研工作台</strong><span>AI RESEARCH WORKBENCH</span></div></div><button className="button new-project" onClick={() => setCreateOpen(true)}><Plus/>新建课题</button><nav>{nav.filter((item) => (item.id !== "admin" || isAdmin) && (item.id !== "skills" || canViewSkillsCatalog)).map((item) => { if (item.id === "contact") return <ContactBlogger key={item.id} variant="sidebar" onOpen={() => setMobileNav(false)}/>; const Icon = item.icon; return <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => { if (item.id === "feedback" && view !== "feedback") setFeedbackOrigin(view); setView(item.id as View); setMobileNav(false); }}><Icon/><span>{item.label}</span>{item.id === "model" && health && <i className={health.codex.status === "ready" ? "online" : "offline"}/>}</button>; })}</nav><div className="sidebar-bottom"><div className="local-badge"><ShieldCheck/><div><strong>{isAdmin ? "管理员模式" : cloudMode ? "租户数据隔离" : "本地证据优先"}</strong><span>{isAdmin ? "跨用户操作全程审计" : "人工确认关键节点"}</span></div></div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? <Moon/> : <Sun/>}<span>{theme === "light" ? "深色模式" : "浅色模式"}</span></button></div></aside>
+  return <div className="app-shell cosmic-workbench">
+    <aside className={`sidebar ${mobileNav ? "open" : ""}`}><div className="brand"><div className="brand-mark"><FlaskConical/></div><div><strong>academic-research-<br/>skills 工作台</strong><span>ACADEMIC RESEARCH · {cloudMode ? "CLOUD READY" : "LOCAL FIRST"}</span></div></div><button className="button new-project" onClick={() => setCreateOpen(true)}><Plus/>新建课题</button><nav>{nav.filter((item) => (item.id !== "admin" || isAdmin) && (item.id !== "skills" || canViewSkillsCatalog) && (item.id !== "contact" || contactVisible)).map((item) => { if (item.id === "contact") return <ContactBlogger key={item.id} variant="sidebar"/>; const Icon = item.icon; return <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => { if (item.id === "feedback" && view !== "feedback") setFeedbackOrigin(view); setView(item.id as View); setMobileNav(false); }}><Icon/><span>{item.label}</span>{item.id === "model" && health && <i className={health.codex.status === "ready" ? "online" : "offline"}/>}</button>; })}</nav><div className="sidebar-bottom"><div className="local-badge"><ShieldCheck/><div><strong>{isAdmin ? "管理员模式" : cloudMode ? "租户数据隔离" : "本地证据优先"}</strong><span>{sessionInfo?.username ? `${sessionInfo.username} · ` : ""}{isAdmin ? "跨用户操作全程审计" : "人工检查点 · 版本可追溯"}</span></div></div><button className="local-signout" onClick={() => void signOut()}><LogOut/><span>退出登录</span></button></div></aside>
     <main><header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)}><Menu/></button><div className="project-switch"><span>当前课题</span><select value={selectedId || ""} disabled={busy === "upload"} onChange={(e) => { setSelectedId(e.target.value || null); setSourceUploads([]); }}><option value="">尚未创建课题</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "paused" ? "（已暂停）" : p.status === "completed" ? "（已完成）" : ""}</option>)}</select></div><div className="top-actions"><span className={`connection ${health?.codex.status === "ready" ? "ready" : ""}`}><i/>{cloudMode ? health?.codex.status === "ready" ? "模型已配置" : "模型待配置" : health?.codex.status === "ready" ? "服务已连接" : "服务连接中"}</span></div></header><div className="page-canvas">{notice && <div className="notice" onClick={() => setNotice("")}>{notice}<X size={16}/></div>}{page()}</div></main>
     {createOpen && <CreateProject onClose={() => setCreateOpen(false)} onCreated={created}/>} 
     {projectSettingsOpen && selected && <ProjectSettings project={selected} busy={busy === "project-settings"} onSave={updateProject} onClose={() => setProjectSettingsOpen(false)}/>} 
-    {onboardingStep && <OnboardingGuide step={onboardingStep} onSkip={() => { if (sessionInfo) localStorage.setItem(`research-model-onboarding-skipped:${sessionInfo.id}`, "1"); setOnboardingStep(null); }} onSignOut={() => void supabase?.auth.signOut()}/>} 
+    {onboardingStep && <OnboardingGuide step={onboardingStep} onSkip={() => { if (sessionInfo) localStorage.setItem(`research-model-onboarding-skipped:${sessionInfo.id}`, "1"); setOnboardingStep(null); }} onSignOut={() => void signOut()}/>} 
   </div>;
 }

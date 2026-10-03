@@ -9,10 +9,10 @@ describe("科研人员试用就绪检查", () => {
     expect(result.status).toBe("ready");
     expect(JSON.stringify(result.nextActions)).not.toContain("证据卡");
   });
-  it("缺少上游正式蓝图时阻止章节写作", () => {
+  it("缺少上游完整性版本时阻止同行评审", () => {
     const result = buildProjectReadiness(project, [], [], [], []);
     expect(result.status).toBe("blocked");
-    expect(result.blockers).toContain("缺少已采用的论文蓝图版本");
+    expect(result.blockers).toContain("缺少已采用的完整性核验Ⅰ版本");
     expect(result.nextActions[0].view).toBe("sources");
   });
 

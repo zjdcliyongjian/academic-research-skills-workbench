@@ -1,12 +1,12 @@
 {
-  "name": "ai-research-copilot-workbench",
-  "version": "0.4.1",
-  "description": "Evidence-aware open-source AI research workbench with human review gates",
+  "name": "academic-research-skills-workbench",
+  "version": "0.1.0",
+  "description": "Local-first research workbench for academic-research-skills-codex",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zjdcliyongjian/ai-research-copilot-workbench.git"
+    "url": "https://github.com/zjdcliyongjian/academic-research-skills-workbench.git"
   },
   "type": "module",
   "engines": {
@@ -16,6 +16,7 @@
     "dev": "vite --host 127.0.0.1 --port 4318",
     "cloud:server": "node --use-env-proxy --env-file=.env.local cloud/dev-server.mjs",
     "server": "node server/index.mjs",
+    "setup:ars-runtime": "node scripts/setup-ars-runtime.mjs",
     "cloud:bootstrap-admin": "node scripts/bootstrap-cloud-admin.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",

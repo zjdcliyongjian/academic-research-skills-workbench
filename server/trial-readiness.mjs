@@ -1,13 +1,13 @@
 import { PROJECT_STAGES } from "./research-state.mjs";
 
 const STAGE_LABELS = {
-  brief: "课题与路线",
-  idea: "Idea 评估",
-  research: "文献调研",
-  blueprint: "论文蓝图",
-  writing: "章节写作",
-  production: "图表整稿",
-  review: "投稿审查",
+  brief: "范围界定",
+  idea: "深度调研",
+  research: "论文写作",
+  blueprint: "完整性核验Ⅰ",
+  writing: "同行评审",
+  production: "返修与复审",
+  review: "最终核验与定稿",
   export: "正式交付",
 };
 

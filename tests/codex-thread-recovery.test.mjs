@@ -81,6 +81,25 @@ describe("Codex 任务恢复", () => {
     expect(storeInstance.updateRun).toHaveBeenLastCalledWith("run-2", { threadId: "thread-new", turnId: "turn-new", status: "running" });
   });
 
+  it("新版 Codex 返回 no rollout found 时同样创建新任务并继续", async () => {
+    const storeInstance = mockStore();
+    const { bridge, updateBinding } = bridgeWith(storeInstance);
+    bridge.request = vi.fn(async (method) => {
+      if (method === "thread/resume") throw new Error("thread/resume: no rollout found for thread id thread-old");
+      if (method === "thread/start") return { thread: { id: "thread-new-rollout" } };
+      if (method === "thread/name/set") return {};
+      if (method === "turn/start") return { turn: { id: "turn-new-rollout" } };
+      throw new Error(`unexpected ${method}`);
+    });
+
+    const result = await bridge.startSkill({ runId: "run-rollout", project, skillName: "vibe-research-workflow", prompt: "test" });
+
+    expect(result).toEqual({ threadId: "thread-new-rollout", turnId: "turn-new-rollout" });
+    expect(storeInstance.updateProjectThread).toHaveBeenCalledWith("p1", "thread-new-rollout");
+    expect(updateBinding).toHaveBeenCalledWith(expect.objectContaining({ threadId: "thread-new-rollout" }), "thread-new-rollout");
+    expect(storeInstance.updateRun).toHaveBeenLastCalledWith("run-rollout", { threadId: "thread-new-rollout", turnId: "turn-new-rollout", status: "running" });
+  });
+
   it("turn/start 竞态失效时只新建并重试一次", async () => {
     const storeInstance = mockStore();
     const { bridge } = bridgeWith(storeInstance);

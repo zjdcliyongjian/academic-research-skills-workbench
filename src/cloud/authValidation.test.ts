@@ -11,9 +11,11 @@ describe("resolveAuthIdentity", () => {
     expect(resolveAuthIdentity("+86 138-0013-8000")).toMatchObject({ kind: "phone", phone: "+8613800138000" });
   });
 
-  it("preserves the reserved admin account and rejects unsupported identifiers", () => {
+  it("accepts usernames and preserves the reserved admin account", () => {
     expect(resolveAuthIdentity("admin")).toMatchObject({ kind: "admin", email: "admin@research-copilot.local" });
-    expect(resolveAuthIdentity("lab2026a")).toBeNull();
+    expect(resolveAuthIdentity("Lab2026_A")).toMatchObject({ kind: "username", account: "lab2026_a" });
+    expect(resolveAuthIdentity("研究员-01")).toMatchObject({ kind: "username", account: "研究员-01" });
+    expect(resolveAuthIdentity("ab")).toBeNull();
   });
 });
 

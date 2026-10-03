@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { ArrowRight, BarChart3, BookOpen, CheckCircle2, Eye, EyeOff, FileOutput, FolderKanban, KeyRound, LoaderCircle, LockKeyhole, Mail, Map, PenLine, Power, Save, Search, Trash2 } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, PenLine, Power, Save, Search, Trash2, UserRound } from "lucide-react";
 import { api, type OcrConfig } from "../api";
 import { PASSWORD_RULE_MESSAGE, passwordRuleError, resolveAuthIdentity, trialLoginEmail } from "./authValidation";
-import { cloudConfigurationError, cloudMode, supabase } from "./supabase";
 import { ContactBlogger } from "./ContactBlogger";
+import { cloudConfigurationError, cloudMode, supabase } from "./supabase";
 
 type ProviderConfig = { id: string; provider: string; model: string; baseUrl: string; keyHint: string; isDefault: boolean };
 
@@ -64,32 +64,44 @@ function modelOptionLabel(model: string) {
   return modelLabels[model] || model;
 }
 
-function AuthPanel() {
+function AuthPanel({ preview = false }: { preview?: boolean }) {
   const [register, setRegister] = useState(false);
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [visualTheme, setVisualTheme] = useState<"editorial" | "cosmic" | "ice">(() => {
-    const requestedTheme = new URLSearchParams(window.location.search).get("theme");
-    return requestedTheme === "cosmic" || requestedTheme === "ice" ? requestedTheme : "editorial";
-  });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [contactVisible, setContactVisible] = useState(!cloudMode);
+
+  useEffect(() => {
+    if (!cloudMode) { setContactVisible(true); return; }
+    let cancelled = false;
+    api.publicSettings()
+      .then((settings) => { if (!cancelled) setContactVisible(settings.contactBloggerEnabled); })
+      .catch(() => { if (!cancelled) setContactVisible(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return;
+    if (preview) { setMessage("当前为登录页视觉预览；部署为云端模式后即可真实注册和登录。"); return; }
     const identity = resolveAuthIdentity(account);
-    if (!identity) { setMessage("请输入有效的中国大陆手机号或邮箱地址。"); return; }
+    if (!identity) { setMessage("请输入邮箱、手机号，或 3–32 位中英文用户名。"); return; }
     if (register && identity.kind === "admin") { setMessage("admin 是系统保留管理员账号，不能在注册页创建。"); return; }
     const passwordError = passwordRuleError(password);
     if (passwordError) { setMessage(passwordError); return; }
     setBusy(true); setMessage("");
     try {
       if (register) await api.trialRegister({ account: identity.account, password });
-      const loginEmail = await trialLoginEmail(identity);
-      const result = await supabase.auth.signInWithPassword({ email: loginEmail, password });
-      if (result.error) throw result.error;
+      if (cloudMode) {
+        if (!supabase) throw new Error("在线服务配置不完整");
+        const loginEmail = await trialLoginEmail(identity);
+        const result = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+        if (result.error) throw result.error;
+      } else {
+        if (!register) await api.localLogin({ account: identity.account, password });
+        window.location.reload();
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "登录失败";
       if (/invalid login credentials/i.test(detail)) setMessage("账号或密码不正确。");
@@ -100,51 +112,41 @@ function AuthPanel() {
 
   const changeMode = (nextRegister: boolean) => { setRegister(nextRegister); setMessage(""); };
 
-  return <div className={`cloud-auth-page is-${visualTheme}`}>
+  return <div className="cloud-auth-page is-cosmic">
     <div className="cloud-auth-scene" aria-hidden="true"/>
     <header className="cloud-auth-topbar">
-      <div className="cloud-brand-lockup"><span className="cloud-brand-symbol"><i/><i/><i/><i/></span><div><strong>科研工作台</strong><small>AI RESEARCH WORKBENCH</small></div></div>
-      <p>让科研更高效 · 让知识创造更大价值</p>
-      <span className="cloud-auth-topline">探索科学的边界 · 与 AI 共赴未知<i/></span>
-      <div className="cloud-auth-theme-picker" role="group" aria-label="登录页视觉主题">
-        {([['editorial', '经典'], ['cosmic', '深空'], ['ice', '晶白']] as const).map(([theme, label]) => <button key={theme} type="button" className={visualTheme === theme ? "active" : ""} onClick={() => setVisualTheme(theme)} aria-pressed={visualTheme === theme}>{label}</button>)}
-      </div>
+      <div className="cloud-brand-lockup"><span className="cloud-brand-symbol"><i/><i/><i/><i/></span><div><strong>academic-research-skills 工作台</strong><small>ACADEMIC RESEARCH WORKBENCH</small></div></div>
+      <span className="cloud-auth-topline">BETTER RESEARCH FOR A BRIGHTER TOMORROW<i/></span>
     </header>
     <section className="cloud-auth-brand">
       <div className="cloud-auth-copy">
-        <span className="eyebrow">AI RESEARCH WORKBENCH</span>
-        <h1>{visualTheme === "editorial" ? <>科研过程可追溯，<br/><em>关键结论由人确认。</em></> : visualTheme === "cosmic" ? <><em>AI 驱动的</em><br/>一站式科研工作台</> : <>让研究，<br/>从复杂信息中找到答案</>}</h1>
-        <p>{visualTheme === "editorial" ? <>从课题、资料到论证与写作，<br/>把分散的科研过程沉淀为可复核、可继续的知识资产。</> : visualTheme === "cosmic" ? <>汇聚研究资料，连接研究思路，<br/>用 AI 加速科学发现。</> : <>用 AI 连接科学知识，<br/>加速人类的探索与发现。</>}</p>
+        <span className="eyebrow">ACADEMIC RESEARCH SKILLS</span>
+        <h1>Academic<br/>Research <em>Skills</em></h1>
+        <p>Research · Write · Review · Revise<br/>让资料、论证、写作与人工确认形成可追溯的研究闭环。</p>
       </div>
-      {visualTheme === "editorial" ? <><div className="cloud-auth-capabilities cloud-auth-editorial-capabilities">
-        <article><span><FolderKanban/></span><strong>课题管理</strong><small>目标、进度与节点统一组织</small></article>
-        <article><span><BookOpen/></span><strong>资料与证据</strong><small>来源清晰，结论可回溯</small></article>
-        <article><span><Map/></span><strong>研究路线</strong><small>从问题到验证逐步推进</small></article>
-        <article><span><FileOutput/></span><strong>成果导出</strong><small>沉淀为可审阅研究资产</small></article>
+      <div className="cloud-auth-capabilities">
+        <article><span><Search/></span><strong>Research</strong><small>资料与证据</small></article>
+        <article><span><BookOpen/></span><strong>Write</strong><small>学术写作</small></article>
+        <article><span><BarChart3/></span><strong>Review</strong><small>完整性与评审</small></article>
+        <article><span><PenLine/></span><strong>Revise</strong><small>返修与定稿</small></article>
       </div>
-      <blockquote>“研究，始于思考，成于积累。”<small>RESEARCH BEGINS WITH QUESTIONS</small></blockquote></> : visualTheme === "cosmic" ? <><div className="cloud-auth-capabilities">
-        <article><span><Search/></span><strong>文献检索</strong><small>汇集资料，溯源核验</small></article>
-        <article><span><BookOpen/></span><strong>AI 阅读</strong><small>梳理脉络，提炼要点</small></article>
-        <article><span><BarChart3/></span><strong>数据分析</strong><small>组织证据，发现联系</small></article>
-        <article><span><PenLine/></span><strong>科研写作</strong><small>从思路到可审阅草稿</small></article>
-      </div>
-      <blockquote>“AI 不是替代科研人员，<br/>而是让每一个好问题走得更远。”<small>FOR A MORE OPEN SCIENCE</small></blockquote></> : <div className="cloud-auth-ice-summary"><strong>文献　·　数据　·　实验　·　知识　·　AI</strong><i/><span>SCIENCE EMPOWERS A BRIGHTER TOMORROW</span></div>}
+      <blockquote>“知识连接想法，证据支撑判断。”<small>KNOWLEDGE CONNECTS IDEAS</small></blockquote>
     </section>
     <form className="cloud-auth-card" onSubmit={submit}>
-      <span className="cloud-auth-language">简体中文⌄</span>
-      <div className="cloud-auth-card-brand"><span className="cloud-brand-symbol"><i/><i/><i/><i/></span><div><strong>科研工作台</strong><small>AI 让科研更简单</small></div></div>
+      <span className="cloud-auth-language">简体中文</span>
+      <div className="cloud-auth-card-brand"><span className="cloud-brand-symbol"><i/><i/><i/><i/></span><div><strong>{register ? "注册试用" : "欢迎回来"}</strong><small>ACADEMIC RESEARCH SKILLS</small></div></div>
       <div className="cloud-auth-tabs" role="tablist" aria-label="账号操作">
         <button type="button" className={!register ? "active" : ""} onClick={() => changeMode(false)}>账号登录</button>
         <button type="button" className={register ? "active" : ""} onClick={() => changeMode(true)}>注册试用</button>
       </div>
-      <label className="cloud-auth-field"><span>账号</span><div><Mail/><input required maxLength={254} value={account} onChange={(event) => setAccount(event.target.value.slice(0, 254))} autoCapitalize="none" autoComplete="username" placeholder="手机号 / 邮箱"/></div></label>
+      <label className="cloud-auth-field"><span>账号</span><div><UserRound/><input required maxLength={254} value={account} onChange={(event) => setAccount(event.target.value.slice(0, 254))} autoCapitalize="none" autoComplete="username" placeholder="用户名 / 邮箱 / 手机号，均免验证"/></div></label>
       <label className="cloud-auth-field"><span>密码</span><div><LockKeyhole/><input type={showPassword ? "text" : "password"} minLength={8} maxLength={12} required value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={register ? "new-password" : "current-password"} placeholder="8–12 位，含字母、数字和特殊字符" title={PASSWORD_RULE_MESSAGE}/><button type="button" className="cloud-auth-password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>{showPassword ? <EyeOff/> : <Eye/>}</button></div></label>
-      <div className="cloud-auth-meta"><span>本期试用免短信与邮件验证</span>{!register && <button type="button" onClick={() => setMessage("本期试用不发送短信或验证邮件。普通账号请联系管理员核验身份后重置临时密码；管理员账号请由系统所有者执行安全恢复流程。")}>忘记密码？</button>}</div>
-      {message && <p className="cloud-auth-message">{message}</p>}
-      <button className="cloud-auth-submit" disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <KeyRound/>}<span>{register ? "创建试用账号" : "登录"}</span>{!busy && <ArrowRight/>}</button>
-      <p className="cloud-auth-rule">{register ? "账号注册后即可使用，不发送验证码。" : "使用手机号或邮箱账号登录。"}{PASSWORD_RULE_MESSAGE}</p>
+      <div className="cloud-auth-meta"><span>{preview ? "登录页视觉预览" : "注册试用免邮箱与验证码"}</span>{!register && <button type="button" onClick={() => setMessage("试用账号不绑定邮箱。忘记密码时由管理员核验身份后重置临时密码。")}>忘记密码？</button>}</div>
+      {message && <p className="cloud-auth-message" role="status" aria-live="polite">{message}</p>}
+      <button type="submit" className="cloud-auth-submit" disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <KeyRound/>}<span>{register ? "创建试用账号" : "登录"}</span>{!busy && <ArrowRight/>}</button>
+      <p className="cloud-auth-rule">{register ? "账号注册后即可试用，不发送验证码。" : "使用账号和密码登录。"}{PASSWORD_RULE_MESSAGE}</p>
       <button type="button" className="cloud-auth-switch" onClick={() => changeMode(!register)}>{register ? "已有账号？返回登录" : "没有账号？立即注册"}</button>
-      <ContactBlogger/>
+      {contactVisible && <ContactBlogger/>}
       <small className="cloud-auth-card-foot">科研，让世界更好 · SCIENCE FOR A BETTER TOMORROW</small>
     </form>
     <footer className="cloud-auth-footer"><strong>KNOWLEDGE CONNECTS A BRIGHTER TOMORROW</strong><span>知识连接更美好的未来</span></footer>
@@ -300,17 +302,22 @@ export function OcrSettingsContent() {
 }
 
 export function CloudGate({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [checking, setChecking] = useState(cloudMode);
+  const previewLogin = new URLSearchParams(window.location.search).get("preview") === "login";
+  const [session, setSession] = useState<Session | "local" | null>(null);
+  const [checking, setChecking] = useState(true);
   useEffect(() => {
-    if (!cloudMode || !supabase) { setChecking(false); return; }
+    if (!cloudMode) {
+      api.session().then(() => setSession("local")).catch(() => setSession(null)).finally(() => setChecking(false));
+      return;
+    }
+    if (!supabase) { setChecking(false); return; }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setChecking(false); });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
     return () => data.subscription.unsubscribe();
   }, []);
   useEffect(() => {
     const client = supabase;
-    if (!cloudMode || !client || !session) return;
+    if (!cloudMode || !client || !session || session === "local") return;
     let stopped = false;
     const verify = async () => {
       try { await api.session(); }
@@ -323,7 +330,7 @@ export function CloudGate({ children }: { children: ReactNode }) {
     const timer = window.setInterval(() => void verify(), 15000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [session]);
-  if (!cloudMode) return <>{children}</>;
+  if (previewLogin) return <AuthPanel preview/>;
   if (cloudConfigurationError) return <div className="cloud-config-error"><h1>在线服务暂不可用</h1><p>{cloudConfigurationError}</p><code>请联系管理员完成服务设置。</code></div>;
   if (checking) return <div className="cloud-loading"><LoaderCircle className="spin"/>正在检查登录状态…</div>;
   if (!session) return <AuthPanel/>;
